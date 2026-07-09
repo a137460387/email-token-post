@@ -443,28 +443,27 @@ body {
 }
 
 .btn-action {
-    background: none;
+    background: transparent;
     border: none;
     cursor: pointer;
-    font-size: 12px;
-    padding: 2px 4px;
+    font-size: 13px;
+    padding: 2px 5px;
     border-radius: var(--radius-sm);
     opacity: 0;
-    transition: all 0.15s;
+    transition: opacity 0.15s;
     flex-shrink: 0;
+    line-height: 1;
 }
 
 .account-item:hover .btn-action {
-    opacity: 0.6;
+    opacity: 1;
 }
 
 .btn-action:hover {
-    opacity: 1;
     background: var(--bg-hover);
 }
 
 .btn-action-danger:hover {
-    opacity: 1;
     background: var(--danger-bg);
 }
 
