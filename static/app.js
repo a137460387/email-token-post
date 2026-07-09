@@ -408,7 +408,14 @@ function updateGroupSelects() {
 }
 
 function renderAccountList() {
-    const accounts = getCurrentAccounts();
+    const allAccounts = getCurrentAccounts();
+    const searchKeyword = document.getElementById('accountSearchInput').value.trim().toLowerCase();
+
+    // 根据搜索关键词过滤账号
+    const accounts = searchKeyword
+        ? allAccounts.filter(acc => acc.email.toLowerCase().includes(searchKeyword))
+        : allAccounts;
+
     const list = document.getElementById('accountList');
     const countEl = document.getElementById('accountCount');
     countEl.textContent = `${accounts.length}`;
@@ -633,6 +640,11 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             reader.readAsText(file);
         }
+    });
+
+    // 搜索账号
+    document.getElementById('accountSearchInput').addEventListener('input', () => {
+        renderAccountList();
     });
 
     // 确认导入
