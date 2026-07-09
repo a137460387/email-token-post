@@ -40,17 +40,21 @@
             <!-- 中间：账号列表 -->
             <section class="panel account-panel">
                 <div class="panel-header">
-                    <div class="panel-title">
-                        <h2 id="currentGroupName">默认分组</h2>
-                        <span class="account-count" id="accountCount">0</span>
+                    <div class="panel-header-top">
+                        <div class="panel-title">
+                            <h2 id="currentGroupName">默认分组</h2>
+                            <span class="account-count" id="accountCount">0</span>
+                        </div>
+                        <div class="toolbar">
+                            <button class="btn btn-ghost btn-sm" id="btnSelectAll">全选</button>
+                            <button class="btn btn-ghost btn-sm" id="btnMoveGroup">移动</button>
+                            <button class="btn btn-danger btn-sm" id="btnDeleteSelected">删除</button>
+                            <button class="btn btn-ghost btn-sm" id="btnExport">导出</button>
+                            <button class="btn btn-ghost btn-sm" id="btnRawData">原数据</button>
+                        </div>
                     </div>
-                    <div class="toolbar">
-                        <input type="text" id="accountSearchInput" class="search-input" placeholder="搜索邮箱...">
-                        <button class="btn btn-ghost btn-sm" id="btnSelectAll">全选</button>
-                        <button class="btn btn-ghost btn-sm" id="btnMoveGroup">移动</button>
-                        <button class="btn btn-danger btn-sm" id="btnDeleteSelected">删除</button>
-                        <button class="btn btn-ghost btn-sm" id="btnExport">导出</button>
-                        <button class="btn btn-ghost btn-sm" id="btnRawData">原数据</button>
+                    <div class="search-bar">
+                        <input type="text" id="accountSearchInput" class="search-input" placeholder="🔍 搜索邮箱账号...">
                     </div>
                 </div>
                 <div class="account-list" id="accountList">

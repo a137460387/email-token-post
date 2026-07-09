@@ -347,11 +347,40 @@ body {
     padding: var(--space-md) var(--space-lg);
     border-bottom: 1px solid var(--border-subtle);
     display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.panel-header-top {
+    display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
     gap: var(--space-sm);
-    min-height: 48px;
+}
+
+.search-bar {
+    width: 100%;
+}
+
+.search-input {
+    width: 100%;
+    padding: 6px 10px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 12px;
+    transition: border-color 0.15s;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.search-input::placeholder {
+    color: var(--text-tertiary);
 }
 
 .panel-title {
@@ -377,26 +406,6 @@ body {
     gap: 4px;
     flex-wrap: wrap;
     align-items: center;
-}
-
-.search-input {
-    padding: 4px 8px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    font-size: 12px;
-    width: 120px;
-    transition: border-color 0.15s;
-}
-
-.search-input:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
-.search-input::placeholder {
-    color: var(--text-tertiary);
 }
 
 /* ============ 账号列表 ============ */
