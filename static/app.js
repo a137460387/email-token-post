@@ -703,7 +703,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // 返回列表
-    document.getElementById('btnBackToList').addEventListener('click', showEmailListView);
+    document.getElementById('btnBackToList').addEventListener('click', () => {
+        cancelPendingRequests();
+        showEmailListView();
+        // 如果邮件列表是loading状态，恢复显示
+        const emailList = document.getElementById('emailList');
+        if (emailList.querySelector('.loading')) {
+            if (currentEmails.length > 0) {
+                const account = getCurrentAccounts().find(a => a.id === selectedAccountId);
+                renderEmailList(currentEmails, account ? account.email : '');
+            } else {
+                emailList.innerHTML = '<div class="empty-state">暂无邮件</div>';
+            }
+        }
+    });
 
     // 点击弹窗外部关闭
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
