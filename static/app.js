@@ -683,34 +683,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // 原数据
     document.getElementById('btnRawData').addEventListener('click', () => exportAccounts('raw'));
 
-    // 复制账号（勾选的账号或当前选中的账号）
-    document.getElementById('btnCopyAccount').addEventListener('click', async () => {
-        let ids = Array.from(selectedAccountIds);
-        // 如果没有勾选，使用当前选中的账号
-        if (ids.length === 0 && selectedAccountId) {
-            ids = [selectedAccountId];
-        }
-        if (ids.length === 0) {
-            showToast('请先勾选或点击一个账号', 'error');
-            return;
-        }
-
-        try {
-            const resp = await fetch('/api/accounts/raw', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids })
-            });
-            const data = await resp.json();
-            if (data.success && data.text) {
-                await navigator.clipboard.writeText(data.text);
-                showToast(`已复制 ${ids.length} 个账号`, 'success');
-            }
-        } catch (e) {
-            showToast('复制失败', 'error');
-        }
-    });
-
     // 复制导出内容
     document.getElementById('btnCopyExport').addEventListener('click', () => {
         const text = document.getElementById('exportText').value;
