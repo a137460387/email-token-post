@@ -463,18 +463,28 @@ def get_emails(account_id):
 
 @app.route('/api/emails/<account_id>/<message_id>', methods=['GET'])
 def get_email_detail(account_id, message_id):
-    """获取邮件详情（使用缓存的token）"""
+    """获取邮件详情（过期才刷新token）"""
     data = load_data()
     account, group = find_account(data, account_id)
 
     if not account:
         return jsonify({'success': False, 'error': '账号不存在'}), 404
 
-    access_token = account.get('access_token', '')
-    if not access_token:
-        return jsonify({'success': False, 'error': '请先点击账号刷新邮件列表'})
+    # 判断token是否过期，过期才刷新
+    if not is_token_valid(account):
+        refresh_result = refresh_access_token(account['client_id'], account['refresh_token'])
+        if refresh_result['success']:
+            account['access_token'] = refresh_result['access_token']
+            account['refresh_token'] = refresh_result.get('refresh_token', account['refresh_token'])
+            account['token_expires_at'] = refresh_result['expires_at']
+            account['status'] = '有效'
+        else:
+            account['status'] = '失效'
+            save_data(data)
+            return jsonify({'success': False, 'error': f'Token刷新失败: {refresh_result["error"]}'})
+        save_data(data)
 
-    result = fetch_email_detail(access_token, message_id)
+    result = fetch_email_detail(account['access_token'], message_id)
     if result.get('success'):
         return jsonify({'success': True, 'message': result['message']})
     else:
@@ -483,18 +493,28 @@ def get_email_detail(account_id, message_id):
 
 @app.route('/api/emails/<account_id>/<message_id>/read', methods=['POST'])
 def mark_as_read(account_id, message_id):
-    """标记邮件为已读"""
+    """标记邮件为已读（过期才刷新token）"""
     data = load_data()
     account, group = find_account(data, account_id)
 
     if not account:
         return jsonify({'success': False, 'error': '账号不存在'}), 404
 
-    access_token = account.get('access_token', '')
-    if not access_token:
-        return jsonify({'success': False, 'error': '请先刷新邮件列表'})
+    # 判断token是否过期，过期才刷新
+    if not is_token_valid(account):
+        refresh_result = refresh_access_token(account['client_id'], account['refresh_token'])
+        if refresh_result['success']:
+            account['access_token'] = refresh_result['access_token']
+            account['refresh_token'] = refresh_result.get('refresh_token', account['refresh_token'])
+            account['token_expires_at'] = refresh_result['expires_at']
+            account['status'] = '有效'
+        else:
+            account['status'] = '失效'
+            save_data(data)
+            return jsonify({'success': False, 'error': f'Token刷新失败: {refresh_result["error"]}'})
+        save_data(data)
 
-    result = mark_email_as_read(access_token, message_id)
+    result = mark_email_as_read(account['access_token'], message_id)
     if result.get('success'):
         return jsonify({'success': True})
     else:
@@ -503,19 +523,29 @@ def mark_as_read(account_id, message_id):
 
 @app.route('/api/emails/<account_id>/latest', methods=['GET'])
 def get_latest_email(account_id):
-    """获取最新邮件（使用缓存的token）"""
+    """获取最新邮件（过期才刷新token）"""
     data = load_data()
     account, group = find_account(data, account_id)
 
     if not account:
         return jsonify({'success': False, 'error': '账号不存在'}), 404
 
-    access_token = account.get('access_token', '')
-    if not access_token:
-        return jsonify({'success': False, 'error': '请先点击账号刷新邮件列表'})
+    # 判断token是否过期，过期才刷新
+    if not is_token_valid(account):
+        refresh_result = refresh_access_token(account['client_id'], account['refresh_token'])
+        if refresh_result['success']:
+            account['access_token'] = refresh_result['access_token']
+            account['refresh_token'] = refresh_result.get('refresh_token', account['refresh_token'])
+            account['token_expires_at'] = refresh_result['expires_at']
+            account['status'] = '有效'
+        else:
+            account['status'] = '失效'
+            save_data(data)
+            return jsonify({'success': False, 'error': f'Token刷新失败: {refresh_result["error"]}'})
+        save_data(data)
 
     headers = {
-        'Authorization': f'Bearer {access_token}',
+        'Authorization': f'Bearer {account["access_token"]}',
         'Content-Type': 'application/json'
     }
     params = {
