@@ -443,7 +443,7 @@ body {
 }
 
 .btn-action {
-    background: var(--bg-tertiary);
+    background: var(--bg-hover);
     border: 1px solid var(--border-default);
     cursor: pointer;
     font-size: 12px;
@@ -464,6 +464,10 @@ body {
     background: var(--accent);
     border-color: var(--accent);
     color: white;
+}
+
+.btn-action-danger {
+    color: var(--danger);
 }
 
 .btn-action-danger:hover {
