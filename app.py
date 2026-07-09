@@ -571,6 +571,128 @@ def get_latest_email(account_id):
         return jsonify({'success': False, 'error': str(e)})
 
 
+# ---- AI Agent 专用 API ----
+
+def find_account_by_email(data, email):
+    """根据邮箱地址查找账号"""
+    for group in data['groups']:
+        for acc in group['accounts']:
+            if acc['email'].lower() == email.lower():
+                return acc
+    return None
+
+
+def ensure_account_token(account, data):
+    """确保账号token有效，过期则刷新"""
+    if not is_token_valid(account):
+        refresh_result = refresh_access_token(account['client_id'], account['refresh_token'])
+        if refresh_result['success']:
+            account['access_token'] = refresh_result['access_token']
+            account['refresh_token'] = refresh_result.get('refresh_token', account['refresh_token'])
+            account['token_expires_at'] = refresh_result['expires_at']
+            account['status'] = '有效'
+            save_data(data)
+            return True
+        else:
+            account['status'] = '失效'
+            save_data(data)
+            return False
+    return True
+
+
+@app.route('/api/agent/emails', methods=['GET'])
+def agent_get_emails():
+    """
+    AI Agent 专用接口：根据邮箱地址获取邮件
+
+    参数:
+        email (必须): 邮箱地址
+        latest (可选): 设为1只获取最新一封
+        keyword (可选): 搜索关键词
+        top (可选): 获取数量，默认20
+
+    示例:
+        GET /api/agent/emails?email=xxx@outlook.com
+        GET /api/agent/emails?email=xxx@outlook.com&latest=1
+        GET /api/agent/emails?email=xxx@outlook.com&keyword=验证码
+        GET /api/agent/emails?email=xxx@outlook.com&top=5
+    """
+    email = request.args.get('email', '').strip()
+    if not email:
+        return jsonify({'success': False, 'error': '缺少参数 email'}), 400
+
+    data = load_data()
+    account = find_account_by_email(data, email)
+
+    if not account:
+        return jsonify({'success': False, 'error': f'邮箱 {email} 不存在'}), 404
+
+    # 确保token有效
+    if not ensure_account_token(account, data):
+        return jsonify({'success': False, 'error': 'Token刷新失败，请检查refresh_token'}), 400
+
+    access_token = account['access_token']
+
+    # 获取参数
+    latest = request.args.get('latest', '') == '1'
+    keyword = request.args.get('keyword', '').strip()
+    top = int(request.args.get('top', '20'))
+
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+
+    params = {
+        '$top': 1 if latest else top,
+        '$orderby': 'receivedDateTime desc',
+        '$select': 'id,subject,from,receivedDateTime,body,bodyPreview,isRead,importance,ccRecipients,bccRecipients,toRecipients'
+    }
+
+    if keyword:
+        params['$search'] = f'"{keyword}"'
+
+    try:
+        resp = requests.get(
+            f'{GRAPH_API_BASE}/me/messages',
+            headers=headers, params=params, timeout=30
+        )
+        if resp.status_code == 200:
+            messages = resp.json().get('value', [])
+            if latest:
+                # 返回单封邮件
+                if messages:
+                    return jsonify({'success': True, 'message': messages[0], 'email': email})
+                else:
+                    return jsonify({'success': True, 'message': None, 'email': email, 'info': '没有邮件'})
+            else:
+                # 返回邮件列表
+                return jsonify({'success': True, 'messages': messages, 'email': email, 'count': len(messages)})
+        else:
+            return jsonify({'success': False, 'error': resp.text}), resp.status_code
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/agent/accounts', methods=['GET'])
+def agent_get_accounts():
+    """
+    AI Agent 专用接口：获取所有账号列表
+
+    示例:
+        GET /api/agent/accounts
+    """
+    data = load_data()
+    accounts = []
+    for group in data['groups']:
+        for acc in group['accounts']:
+            accounts.append({
+                'email': acc['email'],
+                'status': acc.get('status', '未验证')
+            })
+    return jsonify({'success': True, 'accounts': accounts, 'count': len(accounts)})
+
+
 if __name__ == '__main__':
     # 生产环境请关闭 debug，使用 gunicorn 等 WSGI 服务器
     app.run(debug=False, host='0.0.0.0', port=5000)
