@@ -5,6 +5,7 @@ let selectedAccountId = null;
 let selectedAccountIds = new Set();
 let currentEmails = [];
 let currentAbortController = null; // 用于取消竞态请求
+let detailAbortController = null; // 用于取消详情请求竞态
 let toastTimer = null; // Toast定时器
 
 // ============ 工具函数 ============
@@ -357,11 +358,19 @@ async function fetchLatestEmail(accountId) {
 }
 
 async function fetchEmailDetail(accountId, messageId) {
+    // 取消之前的详情请求
+    if (detailAbortController) {
+        detailAbortController.abort();
+    }
+    detailAbortController = new AbortController();
+
     const detailDiv = document.getElementById('emailDetail');
     detailDiv.innerHTML = '<div class="loading">正在加载邮件内容</div>';
 
     try {
-        const resp = await fetch(`/api/emails/${accountId}/${messageId}`);
+        const resp = await fetch(`/api/emails/${accountId}/${messageId}`, {
+            signal: detailAbortController.signal
+        });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
 
