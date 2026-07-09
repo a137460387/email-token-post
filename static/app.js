@@ -535,15 +535,11 @@ function openEmail(messageId) {
 
 async function copyAccount(accountId) {
     try {
-        const resp = await fetch('/api/accounts/raw', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids: [accountId] })
-        });
-        const data = await resp.json();
-        if (data.success && data.text) {
-            await navigator.clipboard.writeText(data.text);
-            showToast('已复制到剪贴板', 'success');
+        const accounts = getCurrentAccounts();
+        const account = accounts.find(a => a.id === accountId);
+        if (account) {
+            await navigator.clipboard.writeText(account.email);
+            showToast('已复制邮箱', 'success');
         }
     } catch (e) {
         showToast('复制失败', 'error');
