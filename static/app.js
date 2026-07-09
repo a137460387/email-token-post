@@ -675,13 +675,22 @@ document.addEventListener('DOMContentLoaded', () => {
         closeModal('newGroupModal');
     });
 
-    // 全选
+    // 全选（基于搜索过滤后的列表）
     document.getElementById('btnSelectAll').addEventListener('click', () => {
-        const accounts = getCurrentAccounts();
-        if (selectedAccountIds.size === accounts.length) {
-            selectedAccountIds.clear();
+        const allAccounts = getCurrentAccounts();
+        const searchKeyword = document.getElementById('accountSearchInput').value.trim().toLowerCase();
+        const filteredAccounts = searchKeyword
+            ? allAccounts.filter(acc => acc.email.toLowerCase().includes(searchKeyword))
+            : allAccounts;
+
+        // 检查是否全部已选中
+        const allSelected = filteredAccounts.every(a => selectedAccountIds.has(a.id));
+        if (allSelected) {
+            // 取消选中过滤后的账号
+            filteredAccounts.forEach(a => selectedAccountIds.delete(a.id));
         } else {
-            accounts.forEach(a => selectedAccountIds.add(a.id));
+            // 选中过滤后的账号
+            filteredAccounts.forEach(a => selectedAccountIds.add(a.id));
         }
         renderAccountList();
     });
