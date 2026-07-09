@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>令牌取件系统 - 微软令牌网页取件</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- 顶部标题栏 -->
+        <header class="header">
+            <div class="header-left">
+                <h1>📧 令牌取件系统</h1>
+                <span class="subtitle">微软令牌网页取件</span>
+            </div>
+            <div class="header-right">
+                <button class="btn btn-primary" id="btnImport">📥 导入令牌账号</button>
+            </div>
+        </header>
+
+        <!-- 主内容区 -->
+        <div class="main-content">
+            <!-- 左侧：账号列表 -->
+            <div class="panel account-panel">
+                <div class="panel-header">
+                    <h2>账号列表</h2>
+                    <div class="toolbar">
+                        <button class="btn btn-sm" id="btnSelectAll">全选</button>
+                        <button class="btn btn-sm btn-danger" id="btnDeleteSelected">删除勾选</button>
+                        <button class="btn btn-sm" id="btnExport">导出账密</button>
+                    </div>
+                </div>
+                <div class="account-list" id="accountList">
+                    <div class="empty-state">暂无账号，请导入</div>
+                </div>
+                <div class="panel-footer">
+                    <span id="accountCount">共 0 个账号</span>
+                </div>
+            </div>
+
+            <!-- 右侧：邮件区域 -->
+            <div class="panel email-panel">
+                <div class="email-view" id="emailView">
+                    <!-- 邮件列表视图 -->
+                    <div class="email-list-view" id="emailListView">
+                        <div class="panel-header">
+                            <h2 id="emailListTitle">邮件列表</h2>
+                            <div class="toolbar">
+                                <button class="btn btn-sm btn-primary" id="btnRefreshEmails" style="display:none">🔄 刷新邮件</button>
+                                <button class="btn btn-sm" id="btnLatestEmail" style="display:none">📬 最新邮件</button>
+                            </div>
+                        </div>
+                        <div class="email-list" id="emailList">
+                            <div class="empty-state">请在左侧选择账号查看邮件</div>
+                        </div>
+                    </div>
+
+                    <!-- 邮件详情视图 -->
+                    <div class="email-detail-view" id="emailDetailView" style="display:none">
+                        <div class="panel-header">
+                            <button class="btn btn-sm" id="btnBackToList">← 返回列表</button>
+                            <h2 id="emailDetailTitle">邮件详情</h2>
+                        </div>
+                        <div class="email-detail" id="emailDetail">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导入弹窗 -->
+    <div class="modal-overlay" id="importModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>📥 导入令牌账号</h3>
+                <button class="btn-close" id="btnCloseImport">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>格式：email----password----client_id----refresh_token</label>
+                    <textarea id="importText" rows="10" placeholder="每行一个账号，格式：&#10;email----password----client_id----refresh_token"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>或上传TXT文件：</label>
+                    <input type="file" id="importFile" accept=".txt">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="btnConfirmImport">确认导入</button>
+                <button class="btn" id="btnCancelImport">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导出弹窗 -->
+    <div class="modal-overlay" id="exportModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>📤 导出账号密码</h3>
+                <button class="btn-close" id="btnCloseExport">×</button>
+            </div>
+            <div class="modal-body">
+                <textarea id="exportText" rows="10" readonly></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="btnCopyExport">复制</button>
+                <button class="btn" id="btnCloseExport2">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 提示框 -->
+    <div class="toast" id="toast"></div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
