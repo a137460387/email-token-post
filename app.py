@@ -374,26 +374,27 @@ def export_raw():
 
 @app.route('/api/emails/<account_id>', methods=['GET'])
 def get_emails(account_id):
-    """获取邮件列表（点击账号时调用，自动刷新token）"""
+    """获取邮件列表（点击账号时调用，过期才刷新token）"""
     data = load_data()
     account, group = find_account(data, account_id)
 
     if not account:
         return jsonify({'success': False, 'error': '账号不存在'}), 404
 
-    # 每次点击都刷新token
-    refresh_result = refresh_access_token(account['client_id'], account['refresh_token'])
-    if refresh_result['success']:
-        account['access_token'] = refresh_result['access_token']
-        account['refresh_token'] = refresh_result.get('refresh_token', account['refresh_token'])
-        account['token_expires_at'] = refresh_result['expires_at']
-        account['status'] = '有效'
-    else:
-        account['status'] = '失效'
+    # 判断token是否过期，过期才刷新
+    if not is_token_valid(account):
+        refresh_result = refresh_access_token(account['client_id'], account['refresh_token'])
+        if refresh_result['success']:
+            account['access_token'] = refresh_result['access_token']
+            account['refresh_token'] = refresh_result.get('refresh_token', account['refresh_token'])
+            account['token_expires_at'] = refresh_result['expires_at']
+            account['status'] = '有效'
+        else:
+            account['status'] = '失效'
+            save_data(data)
+            return jsonify({'success': False, 'error': f'Token刷新失败: {refresh_result["error"]}'})
         save_data(data)
-        return jsonify({'success': False, 'error': f'Token刷新失败: {refresh_result["error"]}'})
 
-    save_data(data)
     result = fetch_emails(account['access_token'])
     if result.get('success'):
         return jsonify({'success': True, 'messages': result['messages'], 'email': account['email']})
