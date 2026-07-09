@@ -4,6 +4,8 @@ let currentGroupId = 'default';
 let selectedAccountId = null;
 let selectedAccountIds = new Set();
 let currentEmails = [];
+let currentAbortController = null; // 用于取消竞态请求
+let toastTimer = null; // Toast定时器
 
 // ============ 工具函数 ============
 
@@ -11,8 +13,11 @@ function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');
     toast.textContent = message;
     toast.className = 'toast show ' + type;
-    setTimeout(() => {
+    // 清除之前的定时器，防止覆盖
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
         toast.className = 'toast';
+        toastTimer = null;
     }, 3000);
 }
 
@@ -21,8 +26,9 @@ function formatDate(dateStr) {
     const date = new Date(dateStr);
     const now = new Date();
     const diff = now - date;
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const days = Math.floor(Math.abs(diff) / (1000 * 60 * 60 * 24));
 
+    if (diff < 0) return '刚刚'; // 未来时间
     if (days === 0) {
         return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
     } else if (days === 1) {
@@ -39,6 +45,24 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// 简易HTML净化器（移除script/event handler等危险标签和属性）
+function sanitizeHtml(html) {
+    if (!html) return '';
+    // 创建临时DOM
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    // 移除所有script标签
+    doc.querySelectorAll('script').forEach(el => el.remove());
+    // 移除所有带有事件处理器的元素属性
+    doc.querySelectorAll('*').forEach(el => {
+        for (const attr of Array.from(el.attributes)) {
+            if (attr.name.startsWith('on') || attr.value.includes('javascript:')) {
+                el.removeAttribute(attr.name);
+            }
+        }
+    });
+    return doc.body.innerHTML;
 }
 
 function openModal(id) {
@@ -58,27 +82,33 @@ function getCurrentAccounts() {
     return group ? group.accounts : [];
 }
 
-function getAllAccounts() {
-    const accounts = [];
-    for (const group of groups) {
-        for (const acc of group.accounts) {
-            accounts.push({ ...acc, group_id: group.id, group_name: group.name });
-        }
-    }
-    return accounts;
-}
-
 // ============ API 调用 ============
+
+async function apiRequest(url, options = {}) {
+    try {
+        const resp = await fetch(url, options);
+        if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}`);
+        }
+        return await resp.json();
+    } catch (e) {
+        throw e;
+    }
+}
 
 async function fetchGroups() {
     try {
-        const resp = await fetch('/api/groups');
-        const data = await resp.json();
+        const data = await apiRequest('/api/groups');
         if (data.success) {
-            groups = data.groups;
+            groups = data.groups || [];
             renderGroupList();
             renderAccountList();
             updateGroupSelects();
+            // 更新当前分组名称
+            const group = getCurrentGroup();
+            if (group) {
+                document.getElementById('currentGroupName').textContent = group.name;
+            }
         }
     } catch (e) {
         showToast('获取分组失败', 'error');
@@ -87,12 +117,11 @@ async function fetchGroups() {
 
 async function createGroup(name) {
     try {
-        const resp = await fetch('/api/groups', {
+        const data = await apiRequest('/api/groups', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name })
         });
-        const data = await resp.json();
         if (data.success) {
             showToast('分组已创建', 'success');
             fetchGroups();
@@ -107,8 +136,7 @@ async function createGroup(name) {
 async function deleteGroup(groupId) {
     if (!confirm('确定删除此分组？分组内的账号将移到默认分组。')) return;
     try {
-        const resp = await fetch(`/api/groups/${groupId}`, { method: 'DELETE' });
-        const data = await resp.json();
+        const data = await apiRequest(`/api/groups/${groupId}`, { method: 'DELETE' });
         if (data.success) {
             showToast(data.message, 'success');
             if (currentGroupId === groupId) {
@@ -125,12 +153,11 @@ async function deleteGroup(groupId) {
 
 async function importAccounts(text, groupId) {
     try {
-        const resp = await fetch('/api/accounts/import', {
+        const data = await apiRequest('/api/accounts/import', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text, group_id: groupId })
         });
-        const data = await resp.json();
         if (data.success) {
             showToast(data.message, 'success');
             fetchGroups();
@@ -138,15 +165,14 @@ async function importAccounts(text, groupId) {
             showToast(data.error, 'error');
         }
     } catch (e) {
-        showToast('导入失败：' + e.message, 'error');
+        showToast('导入失败', 'error');
     }
 }
 
 async function deleteAccount(id) {
     if (!confirm('确定删除这个账号？')) return;
     try {
-        const resp = await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
-        const data = await resp.json();
+        const data = await apiRequest(`/api/accounts/${id}`, { method: 'DELETE' });
         if (data.success) {
             showToast('已删除', 'success');
             if (selectedAccountId === id) {
@@ -154,6 +180,8 @@ async function deleteAccount(id) {
                 showEmptyEmailView();
             }
             fetchGroups();
+        } else {
+            showToast(data.error || '删除失败', 'error');
         }
     } catch (e) {
         showToast('删除失败', 'error');
@@ -169,12 +197,11 @@ async function batchDeleteAccounts() {
     if (!confirm(`确定删除选中的 ${ids.length} 个账号？`)) return;
 
     try {
-        const resp = await fetch('/api/accounts/batch', {
+        const data = await apiRequest('/api/accounts/batch', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ids })
         });
-        const data = await resp.json();
         if (data.success) {
             showToast(data.message, 'success');
             selectedAccountIds.clear();
@@ -197,12 +224,11 @@ async function moveAccounts(targetGroupId) {
     }
 
     try {
-        const resp = await fetch('/api/groups/move', {
+        const data = await apiRequest('/api/groups/move', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ account_ids: ids, target_group_id: targetGroupId })
         });
-        const data = await resp.json();
         if (data.success) {
             showToast(data.message, 'success');
             selectedAccountIds.clear();
@@ -219,15 +245,14 @@ async function moveAccounts(targetGroupId) {
 async function exportAccounts(type) {
     const ids = Array.from(selectedAccountIds);
     const endpoint = type === 'raw' ? '/api/accounts/raw' : '/api/accounts/export';
-    const title = type === 'raw' ? '📋 原数据' : '📤 导出账密';
+    const title = type === 'raw' ? '原数据' : '导出账密';
 
     try {
-        const resp = await fetch(endpoint, {
+        const data = await apiRequest(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ids })
         });
-        const data = await resp.json();
         if (data.success) {
             document.getElementById('exportText').value = data.text;
             document.getElementById('exportModalTitle').textContent = title;
@@ -238,13 +263,32 @@ async function exportAccounts(type) {
     }
 }
 
-async function fetchEmails(accountId) {
+// 取消之前的请求
+function cancelPendingRequests() {
+    if (currentAbortController) {
+        currentAbortController.abort();
+        currentAbortController = null;
+    }
+}
+
+async function fetchEmails(accountId, email) {
+    // 取消之前的请求，防止竞态
+    cancelPendingRequests();
+    currentAbortController = new AbortController();
+
     const emailList = document.getElementById('emailList');
     emailList.innerHTML = '<div class="loading">正在加载邮件</div>';
 
     try {
-        const resp = await fetch(`/api/emails/${accountId}`);
+        const resp = await fetch(`/api/emails/${accountId}`, {
+            signal: currentAbortController.signal
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
+
+        // 检查当前选中的账号是否仍然是请求时的账号
+        if (selectedAccountId !== accountId) return;
+
         if (data.success) {
             currentEmails = data.messages;
             renderEmailList(data.messages, data.email);
@@ -253,18 +297,28 @@ async function fetchEmails(accountId) {
             showToast(data.error, 'error');
         }
     } catch (e) {
+        if (e.name === 'AbortError') return; // 被取消的请求，忽略
         emailList.innerHTML = '<div class="empty-state">网络错误</div>';
         showToast('获取邮件失败', 'error');
     }
 }
 
 async function fetchLatestEmail(accountId) {
+    cancelPendingRequests();
+    currentAbortController = new AbortController();
+
     const emailList = document.getElementById('emailList');
     emailList.innerHTML = '<div class="loading">正在获取最新邮件</div>';
 
     try {
-        const resp = await fetch(`/api/emails/${accountId}/latest`);
+        const resp = await fetch(`/api/emails/${accountId}/latest`, {
+            signal: currentAbortController.signal
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
+
+        if (selectedAccountId !== accountId) return;
+
         if (data.success) {
             if (data.message) {
                 showEmailDetail(data.message);
@@ -276,6 +330,7 @@ async function fetchLatestEmail(accountId) {
             showToast(data.error, 'error');
         }
     } catch (e) {
+        if (e.name === 'AbortError') return;
         emailList.innerHTML = '<div class="empty-state">网络错误</div>';
         showToast('获取最新邮件失败', 'error');
     }
@@ -287,13 +342,18 @@ async function fetchEmailDetail(accountId, messageId) {
 
     try {
         const resp = await fetch(`/api/emails/${accountId}/${messageId}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
+
+        if (selectedAccountId !== accountId) return;
+
         if (data.success) {
             renderEmailDetail(data.message);
         } else {
             detailDiv.innerHTML = `<div class="empty-state">加载失败：${escapeHtml(data.error)}</div>`;
         }
     } catch (e) {
+        if (e.name === 'AbortError') return;
         detailDiv.innerHTML = '<div class="empty-state">网络错误</div>';
     }
 }
@@ -310,7 +370,8 @@ function renderGroupList() {
 
         return `
             <div class="group-item ${isActive ? 'active' : ''}" data-id="${group.id}" onclick="selectGroup('${group.id}')">
-                <span class="group-name">${isDefault ? '📁' : '📂'} ${escapeHtml(group.name)}</span>
+                <span class="group-icon">${isDefault ? '📁' : '📂'}</span>
+                <span class="group-name">${escapeHtml(group.name)}</span>
                 <span class="group-count">${count}</span>
                 ${!isDefault ? `<button class="group-delete" onclick="event.stopPropagation(); deleteGroup('${group.id}')" title="删除分组">×</button>` : ''}
             </div>
@@ -342,10 +403,10 @@ function renderAccountList() {
     const accounts = getCurrentAccounts();
     const list = document.getElementById('accountList');
     const countEl = document.getElementById('accountCount');
-    countEl.textContent = `${accounts.length} 个账号`;
+    countEl.textContent = `${accounts.length}`;
 
     if (accounts.length === 0) {
-        list.innerHTML = '<div class="empty-state">此分组暂无账号</div>';
+        list.innerHTML = '<div class="empty-state">暂无账号</div>';
         return;
     }
 
@@ -406,14 +467,14 @@ function selectAccount(id) {
     showEmailListView();
 
     // 加载邮件
-    fetchEmails(id);
+    fetchEmails(id, account ? account.email : '');
 }
 
 function showEmptyEmailView() {
     document.getElementById('emailListTitle').textContent = '邮件列表';
     document.getElementById('btnRefreshEmails').style.display = 'none';
     document.getElementById('btnLatestEmail').style.display = 'none';
-    document.getElementById('emailList').innerHTML = '<div class="empty-state">请在中间列表选择账号查看邮件</div>';
+    document.getElementById('emailList').innerHTML = '<div class="empty-state">选择账号查看邮件</div>';
     showEmailListView();
 }
 
@@ -441,7 +502,7 @@ function renderEmailList(messages, email) {
         const isUnread = !msg.isRead;
 
         return `
-            <div class="email-item ${isUnread ? 'unread' : ''}" onclick="openEmail('${msg.id}')">
+            <div class="email-item ${isUnread ? 'unread' : ''}" data-id="${msg.id}" onclick="openEmail('${msg.id}')">
                 <div class="email-subject">${escapeHtml(msg.subject || '(无主题)')}</div>
                 <div class="email-from">${escapeHtml(fromName)} &lt;${escapeHtml(fromAddr)}&gt;</div>
                 <div class="email-preview">${escapeHtml(msg.bodyPreview || '')}</div>
@@ -471,10 +532,14 @@ function renderEmailDetail(msg) {
     const ccAddrs = (msg.cc || msg.ccRecipients || []).map(r => r.emailAddress?.address || '').join(', ');
     const date = msg.receivedDateTime ? new Date(msg.receivedDateTime).toLocaleString('zh-CN') : '';
 
+    // 更新详情标题
+    document.getElementById('emailDetailTitle').textContent = subject;
+
     let bodyHtml = '';
     if (msg.body?.content) {
         if (msg.body.contentType === 'html') {
-            bodyHtml = msg.body.content;
+            // 净化HTML防止XSS
+            bodyHtml = sanitizeHtml(msg.body.content);
         } else {
             bodyHtml = `<pre style="white-space:pre-wrap;word-break:break-all;">${escapeHtml(msg.body.content)}</pre>`;
         }
@@ -506,7 +571,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnImport').addEventListener('click', () => {
         document.getElementById('importText').value = '';
         document.getElementById('importFile').value = '';
-        // 设置当前分组为默认选中
         document.getElementById('importGroupSelect').value = currentGroupId;
         openModal('importModal');
     });
@@ -524,14 +588,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // 确认导入
-    document.getElementById('btnConfirmImport').addEventListener('click', () => {
+    document.getElementById('btnConfirmImport').addEventListener('click', async () => {
         const text = document.getElementById('importText').value.trim();
         const groupId = document.getElementById('importGroupSelect').value;
         if (!text) {
             showToast('请输入或上传账号数据', 'error');
             return;
         }
-        importAccounts(text, groupId);
+        await importAccounts(text, groupId);
         closeModal('importModal');
     });
 
@@ -541,13 +605,13 @@ document.addEventListener('DOMContentLoaded', () => {
         openModal('newGroupModal');
     });
 
-    document.getElementById('btnConfirmNewGroup').addEventListener('click', () => {
+    document.getElementById('btnConfirmNewGroup').addEventListener('click', async () => {
         const name = document.getElementById('newGroupName').value.trim();
         if (!name) {
             showToast('请输入分组名称', 'error');
             return;
         }
-        createGroup(name);
+        await createGroup(name);
         closeModal('newGroupModal');
     });
 
@@ -603,7 +667,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 刷新邮件
     document.getElementById('btnRefreshEmails').addEventListener('click', () => {
-        if (selectedAccountId) fetchEmails(selectedAccountId);
+        if (selectedAccountId) {
+            const accounts = getCurrentAccounts();
+            const account = accounts.find(a => a.id === selectedAccountId);
+            fetchEmails(selectedAccountId, account ? account.email : '');
+        }
     });
 
     // 最新邮件
@@ -621,5 +689,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 overlay.classList.remove('show');
             }
         });
+    });
+
+    // Escape键关闭弹窗
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal-overlay.show').forEach(m => m.classList.remove('show'));
+        }
     });
 });
