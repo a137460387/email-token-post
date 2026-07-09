@@ -521,7 +521,7 @@ def get_latest_email(account_id):
     params = {
         '$top': 1,
         '$orderby': 'receivedDateTime desc',
-        '$select': 'id,subject,from,receivedDateTime,body,bodyPreview,isRead,importance,cc,bcc,toRecipients'
+        '$select': 'id,subject,from,receivedDateTime,body,bodyPreview,isRead,importance,ccRecipients,bccRecipients,toRecipients'
     }
 
     try:
