@@ -290,8 +290,16 @@ async function fetchEmails(accountId, email) {
         if (selectedAccountId !== accountId) return;
 
         if (data.success) {
-            currentEmails = data.messages;
-            renderEmailList(data.messages, data.email);
+            // 保留本地已读状态（防止刷新后丢失）
+            const readSet = new Set(
+                currentEmails.filter(m => m.isRead).map(m => m.id)
+            );
+            // 合并：服务器数据 + 本地已读状态
+            currentEmails = data.messages.map(msg => ({
+                ...msg,
+                isRead: msg.isRead || readSet.has(msg.id)
+            }));
+            renderEmailList(currentEmails, data.email);
         } else {
             emailList.innerHTML = `<div class="empty-state">加载失败：${escapeHtml(data.error)}</div>`;
             showToast(data.error, 'error');
