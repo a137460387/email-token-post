@@ -127,36 +127,6 @@ def fetch_emails(access_token, top=20):
         return {'success': False, 'error': str(e)}
 
 
-def search_emails(access_token, keyword, top=20):
-    """搜索邮件"""
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Content-Type': 'application/json'
-    }
-    params = {
-        '$top': top,
-        '$orderby': 'receivedDateTime desc',
-        '$select': 'id,subject,from,receivedDateTime,bodyPreview,isRead,importance',
-        '$search': f'"{keyword}"'
-    }
-    try:
-        resp = requests.get(
-            f'{GRAPH_API_BASE}/me/messages',
-            headers=headers, params=params, timeout=30
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            return {'success': True, 'messages': data.get('value', [])}
-        else:
-            try:
-                error_info = resp.json().get('error', {}).get('message', resp.text)
-            except Exception:
-                error_info = resp.text
-            return {'success': False, 'error': error_info}
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
-
-
 def fetch_email_detail(access_token, message_id):
     """获取单封邮件详情"""
     headers = {
@@ -489,30 +459,6 @@ def get_emails(account_id):
         return jsonify({'success': True, 'messages': result['messages'], 'email': account['email']})
     else:
         return jsonify({'success': False, 'error': result.get('error', '获取失败')})
-
-
-@app.route('/api/emails/<account_id>/search', methods=['GET'])
-def search_emails_api(account_id):
-    """搜索邮件"""
-    keyword = request.args.get('q', '').strip()
-    if not keyword:
-        return jsonify({'success': False, 'error': '请输入搜索关键词'}), 400
-
-    data = load_data()
-    account, group = find_account(data, account_id)
-
-    if not account:
-        return jsonify({'success': False, 'error': '账号不存在'}), 404
-
-    access_token = account.get('access_token', '')
-    if not access_token:
-        return jsonify({'success': False, 'error': '请先点击账号刷新邮件列表'})
-
-    result = search_emails(access_token, keyword)
-    if result.get('success'):
-        return jsonify({'success': True, 'messages': result['messages'], 'email': account['email'], 'keyword': keyword})
-    else:
-        return jsonify({'success': False, 'error': result.get('error', '搜索失败')})
 
 
 @app.route('/api/emails/<account_id>/<message_id>', methods=['GET'])
