@@ -371,7 +371,7 @@ def export_raw():
 
 @app.route('/api/emails/<account_id>', methods=['GET'])
 def get_emails(account_id):
-    """获取账号的邮件列表"""
+    """获取账号的邮件列表，自动处理token过期"""
     data = load_data()
     account, group = find_account(data, account_id)
 
@@ -386,7 +386,25 @@ def get_emails(account_id):
     if not access_token:
         return jsonify({'success': False, 'error': 'Token刷新失败，请检查refresh_token是否有效'})
 
+    # 第一次尝试
     result = fetch_emails(access_token)
+
+    # 如果失败，尝试刷新token后重试
+    if not result.get('success'):
+        error_msg = result.get('error', '')
+        if 'IDX14100' in error_msg or 'InvalidAuthenticationToken' in error_msg or 'expired' in error_msg.lower():
+            # Token过期，刷新重试
+            refresh_result = refresh_access_token(account['client_id'], account['refresh_token'])
+            if refresh_result['success']:
+                account['access_token'] = refresh_result['access_token']
+                account['refresh_token'] = refresh_result.get('refresh_token', account['refresh_token'])
+                account['status'] = '有效'
+                save_data(data)
+                result = fetch_emails(refresh_result['access_token'])
+            else:
+                account['status'] = '失效'
+                save_data(data)
+
     if result.get('success'):
         return jsonify({'success': True, 'messages': result['messages'], 'email': account['email']})
     else:
@@ -395,7 +413,7 @@ def get_emails(account_id):
 
 @app.route('/api/emails/<account_id>/<message_id>', methods=['GET'])
 def get_email_detail(account_id, message_id):
-    """获取邮件详情"""
+    """获取邮件详情，自动处理token过期"""
     data = load_data()
     account, group = find_account(data, account_id)
 
@@ -404,9 +422,30 @@ def get_email_detail(account_id, message_id):
 
     access_token = account.get('access_token', '')
     if not access_token:
-        return jsonify({'success': False, 'error': '请先刷新邮件列表以获取Token'}), 400
+        # 尝试刷新
+        refresh_result = refresh_access_token(account['client_id'], account['refresh_token'])
+        if refresh_result['success']:
+            access_token = refresh_result['access_token']
+            account['access_token'] = access_token
+            account['refresh_token'] = refresh_result.get('refresh_token', account['refresh_token'])
+            save_data(data)
+        else:
+            return jsonify({'success': False, 'error': '请先刷新邮件列表以获取Token'}), 400
 
+    # 第一次尝试
     result = fetch_email_detail(access_token, message_id)
+
+    # 如果失败，尝试刷新token后重试
+    if not result.get('success'):
+        error_msg = result.get('error', '')
+        if 'IDX14100' in error_msg or 'InvalidAuthenticationToken' in error_msg or 'expired' in error_msg.lower():
+            refresh_result = refresh_access_token(account['client_id'], account['refresh_token'])
+            if refresh_result['success']:
+                account['access_token'] = refresh_result['access_token']
+                account['refresh_token'] = refresh_result.get('refresh_token', account['refresh_token'])
+                save_data(data)
+                result = fetch_email_detail(refresh_result['access_token'], message_id)
+
     if result.get('success'):
         return jsonify({'success': True, 'message': result['message']})
     else:
@@ -415,7 +454,7 @@ def get_email_detail(account_id, message_id):
 
 @app.route('/api/emails/<account_id>/latest', methods=['GET'])
 def get_latest_email(account_id):
-    """获取最新一封邮件"""
+    """获取最新一封邮件，自动处理token过期"""
     data = load_data()
     account, group = find_account(data, account_id)
 
@@ -438,11 +477,28 @@ def get_latest_email(account_id):
         '$orderby': 'receivedDateTime desc',
         '$select': 'id,subject,from,receivedDateTime,body,bodyPreview,isRead,importance,cc,bcc,toRecipients'
     }
+
+    # 第一次尝试
     try:
         resp = requests.get(
             f'{GRAPH_API_BASE}/me/messages',
             headers=headers, params=params, timeout=30
         )
+        # 如果token过期，刷新重试
+        if resp.status_code != 200:
+            error_text = resp.text
+            if 'IDX14100' in error_text or 'InvalidAuthenticationToken' in error_text:
+                refresh_result = refresh_access_token(account['client_id'], account['refresh_token'])
+                if refresh_result['success']:
+                    account['access_token'] = refresh_result['access_token']
+                    account['refresh_token'] = refresh_result.get('refresh_token', account['refresh_token'])
+                    save_data(data)
+                    headers['Authorization'] = f'Bearer {refresh_result["access_token"]}'
+                    resp = requests.get(
+                        f'{GRAPH_API_BASE}/me/messages',
+                        headers=headers, params=params, timeout=30
+                    )
+
         if resp.status_code == 200:
             messages = resp.json().get('value', [])
             if messages:
