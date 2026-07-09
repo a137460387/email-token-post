@@ -7,26 +7,30 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
-ACCOUNTS_FILE = os.path.join(os.path.dirname(__file__), 'accounts.json')
+DATA_FILE = os.path.join(os.path.dirname(__file__), 'data.json')
 
 # Microsoft OAuth2 token endpoint
 TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 GRAPH_API_BASE = "https://graph.microsoft.com/v1.0"
 
 
-def load_accounts():
-    """从JSON文件加载账号列表"""
+def load_data():
+    """从JSON文件加载数据（包含分组和账号）"""
     try:
-        with open(ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
+        with open(DATA_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        return []
+        return {
+            'groups': [
+                {'id': 'default', 'name': '默认分组', 'accounts': []}
+            ]
+        }
 
 
-def save_accounts(accounts):
-    """保存账号列表到JSON文件"""
-    with open(ACCOUNTS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(accounts, f, ensure_ascii=False, indent=2)
+def save_data(data):
+    """保存数据到JSON文件"""
+    with open(DATA_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
 def parse_import_text(text):
@@ -122,6 +126,43 @@ def fetch_email_detail(access_token, message_id):
         return {'success': False, 'error': str(e)}
 
 
+def ensure_access_token(account):
+    """确保账号有有效的access_token，返回(access_token, updated)"""
+    if account.get('access_token'):
+        return account['access_token'], False
+
+    refresh_result = refresh_access_token(account['client_id'], account['refresh_token'])
+    if refresh_result['success']:
+        account['access_token'] = refresh_result['access_token']
+        account['refresh_token'] = refresh_result.get('refresh_token', account['refresh_token'])
+        account['status'] = '有效'
+        return account['access_token'], True
+    else:
+        account['status'] = '失效'
+        return None, True
+
+
+def find_account(data, account_id):
+    """在所有分组中查找账号"""
+    for group in data['groups']:
+        for acc in group['accounts']:
+            if acc['id'] == account_id:
+                return acc, group
+    return None, None
+
+
+def get_all_accounts(data):
+    """获取所有账号（扁平列表）"""
+    accounts = []
+    for group in data['groups']:
+        for acc in group['accounts']:
+            acc_copy = acc.copy()
+            acc_copy['group_id'] = group['id']
+            acc_copy['group_name'] = group['name']
+            accounts.append(acc_copy)
+    return accounts
+
+
 # ============ 路由 ============
 
 @app.route('/')
@@ -129,30 +170,113 @@ def index():
     return render_template('index.html')
 
 
-# ---- 账号管理 API ----
+# ---- 分组管理 API ----
 
-@app.route('/api/accounts', methods=['GET'])
-def get_accounts():
-    """获取所有账号"""
-    accounts = load_accounts()
-    # 不返回敏感字段给前端
-    safe_accounts = []
-    for acc in accounts:
-        safe_accounts.append({
-            'id': acc['id'],
-            'email': acc['email'],
-            'client_id': acc['client_id'],
-            'status': acc.get('status', '未验证'),
-            'created_at': acc.get('created_at', '')
+@app.route('/api/groups', methods=['GET'])
+def get_groups():
+    """获取所有分组（含账号）"""
+    data = load_data()
+    result = []
+    for group in data['groups']:
+        safe_accounts = []
+        for acc in group['accounts']:
+            safe_accounts.append({
+                'id': acc['id'],
+                'email': acc['email'],
+                'client_id': acc['client_id'],
+                'status': acc.get('status', '未验证'),
+                'created_at': acc.get('created_at', '')
+            })
+        result.append({
+            'id': group['id'],
+            'name': group['name'],
+            'accounts': safe_accounts
         })
-    return jsonify({'success': True, 'accounts': safe_accounts})
+    return jsonify({'success': True, 'groups': result})
 
+
+@app.route('/api/groups', methods=['POST'])
+def create_group():
+    """创建新分组"""
+    req = request.json
+    name = req.get('name', '').strip()
+    if not name:
+        return jsonify({'success': False, 'error': '分组名称不能为空'}), 400
+
+    data = load_data()
+    new_group = {
+        'id': str(uuid.uuid4()),
+        'name': name,
+        'accounts': []
+    }
+    data['groups'].append(new_group)
+    save_data(data)
+    return jsonify({'success': True, 'group': new_group})
+
+
+@app.route('/api/groups/<group_id>', methods=['DELETE'])
+def delete_group(group_id):
+    """删除分组（账号移到默认分组）"""
+    if group_id == 'default':
+        return jsonify({'success': False, 'error': '不能删除默认分组'}), 400
+
+    data = load_data()
+    default_group = next((g for g in data['groups'] if g['id'] == 'default'), None)
+    target_group = next((g for g in data['groups'] if g['id'] == group_id), None)
+
+    if not target_group:
+        return jsonify({'success': False, 'error': '分组不存在'}), 404
+
+    # 把账号移到默认分组
+    if default_group:
+        default_group['accounts'].extend(target_group['accounts'])
+
+    data['groups'] = [g for g in data['groups'] if g['id'] != group_id]
+    save_data(data)
+    return jsonify({'success': True, 'message': '分组已删除，账号已移至默认分组'})
+
+
+@app.route('/api/groups/move', methods=['POST'])
+def move_accounts():
+    """移动账号到指定分组"""
+    req = request.json
+    account_ids = req.get('account_ids', [])
+    target_group_id = req.get('target_group_id')
+
+    if not account_ids:
+        return jsonify({'success': False, 'error': '没有选择账号'}), 400
+
+    data = load_data()
+    target_group = next((g for g in data['groups'] if g['id'] == target_group_id), None)
+    if not target_group:
+        return jsonify({'success': False, 'error': '目标分组不存在'}), 404
+
+    id_set = set(account_ids)
+    moved_count = 0
+
+    for group in data['groups']:
+        remaining = []
+        for acc in group['accounts']:
+            if acc['id'] in id_set:
+                target_group['accounts'].append(acc)
+                moved_count += 1
+            else:
+                remaining.append(acc)
+        group['accounts'] = remaining
+
+    save_data(data)
+    return jsonify({'success': True, 'message': f'已移动 {moved_count} 个账号'})
+
+
+# ---- 账号管理 API ----
 
 @app.route('/api/accounts/import', methods=['POST'])
 def import_accounts():
     """导入账号"""
-    data = request.json
-    text = data.get('text', '')
+    req = request.json
+    text = req.get('text', '')
+    group_id = req.get('group_id', 'default')
+
     if not text:
         return jsonify({'success': False, 'error': '没有输入内容'}), 400
 
@@ -160,19 +284,23 @@ def import_accounts():
     if not new_accounts:
         return jsonify({'success': False, 'error': '解析失败，请检查格式：email----password----client_id----refresh_token'}), 400
 
-    existing = load_accounts()
-    existing_emails = {acc['email'] for acc in existing}
+    data = load_data()
+    target_group = next((g for g in data['groups'] if g['id'] == group_id), None)
+    if not target_group:
+        target_group = data['groups'][0]  # fallback to first group
+
+    all_emails = {acc['email'] for group in data['groups'] for acc in group['accounts']}
 
     added = 0
     skipped = 0
     for acc in new_accounts:
-        if acc['email'] not in existing_emails:
-            existing.append(acc)
+        if acc['email'] not in all_emails:
+            target_group['accounts'].append(acc)
             added += 1
         else:
             skipped += 1
 
-    save_accounts(existing)
+    save_data(data)
     return jsonify({
         'success': True,
         'message': f'导入完成：新增 {added} 个，跳过 {skipped} 个重复账号',
@@ -184,34 +312,37 @@ def import_accounts():
 @app.route('/api/accounts/<account_id>', methods=['DELETE'])
 def delete_account(account_id):
     """删除单个账号"""
-    accounts = load_accounts()
-    accounts = [acc for acc in accounts if acc['id'] != account_id]
-    save_accounts(accounts)
+    data = load_data()
+    for group in data['groups']:
+        group['accounts'] = [acc for acc in group['accounts'] if acc['id'] != account_id]
+    save_data(data)
     return jsonify({'success': True, 'message': '已删除'})
 
 
 @app.route('/api/accounts/batch', methods=['DELETE'])
 def batch_delete_accounts():
     """批量删除账号"""
-    data = request.json
-    ids = data.get('ids', [])
+    req = request.json
+    ids = req.get('ids', [])
     if not ids:
         return jsonify({'success': False, 'error': '没有选择账号'}), 400
 
-    accounts = load_accounts()
+    data = load_data()
     id_set = set(ids)
-    accounts = [acc for acc in accounts if acc['id'] not in id_set]
-    save_accounts(accounts)
+    for group in data['groups']:
+        group['accounts'] = [acc for acc in group['accounts'] if acc['id'] not in id_set]
+    save_data(data)
     return jsonify({'success': True, 'message': f'已删除 {len(ids)} 个账号'})
 
 
 @app.route('/api/accounts/export', methods=['POST'])
 def export_accounts():
     """导出账号密码"""
-    data = request.json
-    ids = data.get('ids', [])
-    accounts = load_accounts()
+    req = request.json
+    ids = req.get('ids', [])
+    data = load_data()
 
+    accounts = get_all_accounts(data)
     if ids:
         id_set = set(ids)
         accounts = [acc for acc in accounts if acc['id'] in id_set]
@@ -220,70 +351,53 @@ def export_accounts():
     return jsonify({'success': True, 'text': '\n'.join(lines)})
 
 
+@app.route('/api/accounts/raw', methods=['POST'])
+def export_raw():
+    """导出原始数据"""
+    req = request.json
+    ids = req.get('ids', [])
+    data = load_data()
+
+    accounts = get_all_accounts(data)
+    if ids:
+        id_set = set(ids)
+        accounts = [acc for acc in accounts if acc['id'] in id_set]
+
+    lines = [f"{acc['email']}----{acc['password']}----{acc['client_id']}----{acc['refresh_token']}" for acc in accounts]
+    return jsonify({'success': True, 'text': '\n'.join(lines)})
+
+
 # ---- 邮件操作 API ----
 
 @app.route('/api/emails/<account_id>', methods=['GET'])
 def get_emails(account_id):
     """获取账号的邮件列表"""
-    accounts = load_accounts()
-    account = None
-    for acc in accounts:
-        if acc['id'] == account_id:
-            account = acc
-            break
+    data = load_data()
+    account, group = find_account(data, account_id)
 
     if not account:
         return jsonify({'success': False, 'error': '账号不存在'}), 404
 
-    # 先尝试用现有的access_token
-    access_token = account.get('access_token', '')
-    result = None
+    # 确保有access_token
+    access_token, updated = ensure_access_token(account)
+    if updated:
+        save_data(data)
 
-    if access_token:
-        result = fetch_emails(access_token)
+    if not access_token:
+        return jsonify({'success': False, 'error': 'Token刷新失败，请检查refresh_token是否有效'})
 
-    # 如果没有access_token或已失效，刷新token
-    if not access_token or (result and not result.get('success')):
-        refresh_result = refresh_access_token(account['client_id'], account['refresh_token'])
-        if refresh_result['success']:
-            access_token = refresh_result['access_token']
-            # 更新存储的token
-            for acc in accounts:
-                if acc['id'] == account_id:
-                    acc['access_token'] = access_token
-                    acc['refresh_token'] = refresh_result.get('refresh_token', acc['refresh_token'])
-                    acc['status'] = '有效'
-                    break
-            save_accounts(accounts)
-            result = fetch_emails(access_token)
-        else:
-            # 更新状态为失效
-            for acc in accounts:
-                if acc['id'] == account_id:
-                    acc['status'] = '失效'
-                    break
-            save_accounts(accounts)
-            return jsonify({
-                'success': False,
-                'error': f'Token刷新失败: {refresh_result["error"]}'
-            })
-
-    if result and result.get('success'):
+    result = fetch_emails(access_token)
+    if result.get('success'):
         return jsonify({'success': True, 'messages': result['messages'], 'email': account['email']})
     else:
-        error_msg = result.get('error', '未知错误') if result else '请求失败'
-        return jsonify({'success': False, 'error': error_msg})
+        return jsonify({'success': False, 'error': result.get('error', '获取失败')})
 
 
 @app.route('/api/emails/<account_id>/<message_id>', methods=['GET'])
 def get_email_detail(account_id, message_id):
     """获取邮件详情"""
-    accounts = load_accounts()
-    account = None
-    for acc in accounts:
-        if acc['id'] == account_id:
-            account = acc
-            break
+    data = load_data()
+    account, group = find_account(data, account_id)
 
     if not account:
         return jsonify({'success': False, 'error': '账号不存在'}), 404
@@ -302,33 +416,19 @@ def get_email_detail(account_id, message_id):
 @app.route('/api/emails/<account_id>/latest', methods=['GET'])
 def get_latest_email(account_id):
     """获取最新一封邮件"""
-    accounts = load_accounts()
-    account = None
-    for acc in accounts:
-        if acc['id'] == account_id:
-            account = acc
-            break
+    data = load_data()
+    account, group = find_account(data, account_id)
 
     if not account:
         return jsonify({'success': False, 'error': '账号不存在'}), 404
 
-    access_token = account.get('access_token', '')
-    if not access_token:
-        # 尝试刷新
-        refresh_result = refresh_access_token(account['client_id'], account['refresh_token'])
-        if refresh_result['success']:
-            access_token = refresh_result['access_token']
-            for acc in accounts:
-                if acc['id'] == account_id:
-                    acc['access_token'] = access_token
-                    acc['refresh_token'] = refresh_result.get('refresh_token', acc['refresh_token'])
-                    acc['status'] = '有效'
-                    break
-            save_accounts(accounts)
-        else:
-            return jsonify({'success': False, 'error': 'Token刷新失败'})
+    access_token, updated = ensure_access_token(account)
+    if updated:
+        save_data(data)
 
-    # 获取最新1封邮件
+    if not access_token:
+        return jsonify({'success': False, 'error': 'Token刷新失败'})
+
     headers = {
         'Authorization': f'Bearer {access_token}',
         'Content-Type': 'application/json'

@@ -1,5 +1,6 @@
 // ============ 全局状态 ============
-let accounts = [];
+let groups = [];
+let currentGroupId = 'default';
 let selectedAccountId = null;
 let selectedAccountIds = new Set();
 let currentEmails = [];
@@ -40,32 +41,99 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function openModal(id) {
+    document.getElementById(id).classList.add('show');
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('show');
+}
+
+function getCurrentGroup() {
+    return groups.find(g => g.id === currentGroupId);
+}
+
+function getCurrentAccounts() {
+    const group = getCurrentGroup();
+    return group ? group.accounts : [];
+}
+
+function getAllAccounts() {
+    const accounts = [];
+    for (const group of groups) {
+        for (const acc of group.accounts) {
+            accounts.push({ ...acc, group_id: group.id, group_name: group.name });
+        }
+    }
+    return accounts;
+}
+
 // ============ API 调用 ============
 
-async function fetchAccounts() {
+async function fetchGroups() {
     try {
-        const resp = await fetch('/api/accounts');
+        const resp = await fetch('/api/groups');
         const data = await resp.json();
         if (data.success) {
-            accounts = data.accounts;
+            groups = data.groups;
+            renderGroupList();
             renderAccountList();
+            updateGroupSelects();
         }
     } catch (e) {
-        showToast('获取账号列表失败', 'error');
+        showToast('获取分组失败', 'error');
     }
 }
 
-async function importAccounts(text) {
+async function createGroup(name) {
+    try {
+        const resp = await fetch('/api/groups', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast('分组已创建', 'success');
+            fetchGroups();
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (e) {
+        showToast('创建失败', 'error');
+    }
+}
+
+async function deleteGroup(groupId) {
+    if (!confirm('确定删除此分组？分组内的账号将移到默认分组。')) return;
+    try {
+        const resp = await fetch(`/api/groups/${groupId}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (data.success) {
+            showToast(data.message, 'success');
+            if (currentGroupId === groupId) {
+                currentGroupId = 'default';
+            }
+            fetchGroups();
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (e) {
+        showToast('删除失败', 'error');
+    }
+}
+
+async function importAccounts(text, groupId) {
     try {
         const resp = await fetch('/api/accounts/import', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text })
+            body: JSON.stringify({ text, group_id: groupId })
         });
         const data = await resp.json();
         if (data.success) {
             showToast(data.message, 'success');
-            fetchAccounts();
+            fetchGroups();
         } else {
             showToast(data.error, 'error');
         }
@@ -85,7 +153,7 @@ async function deleteAccount(id) {
                 selectedAccountId = null;
                 showEmptyEmailView();
             }
-            fetchAccounts();
+            fetchGroups();
         }
     } catch (e) {
         showToast('删除失败', 'error');
@@ -114,17 +182,47 @@ async function batchDeleteAccounts() {
                 selectedAccountId = null;
                 showEmptyEmailView();
             }
-            fetchAccounts();
+            fetchGroups();
         }
     } catch (e) {
         showToast('删除失败', 'error');
     }
 }
 
-async function exportAccounts() {
+async function moveAccounts(targetGroupId) {
     const ids = Array.from(selectedAccountIds);
+    if (ids.length === 0) {
+        showToast('请先勾选要移动的账号', 'error');
+        return;
+    }
+
     try {
-        const resp = await fetch('/api/accounts/export', {
+        const resp = await fetch('/api/groups/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_ids: ids, target_group_id: targetGroupId })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast(data.message, 'success');
+            selectedAccountIds.clear();
+            closeModal('moveModal');
+            fetchGroups();
+        } else {
+            showToast(data.error, 'error');
+        }
+    } catch (e) {
+        showToast('移动失败', 'error');
+    }
+}
+
+async function exportAccounts(type) {
+    const ids = Array.from(selectedAccountIds);
+    const endpoint = type === 'raw' ? '/api/accounts/raw' : '/api/accounts/export';
+    const title = type === 'raw' ? '📋 原数据' : '📤 导出账密';
+
+    try {
+        const resp = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ids })
@@ -132,7 +230,8 @@ async function exportAccounts() {
         const data = await resp.json();
         if (data.success) {
             document.getElementById('exportText').value = data.text;
-            document.getElementById('exportModal').classList.add('show');
+            document.getElementById('exportModalTitle').textContent = title;
+            openModal('exportModal');
         }
     } catch (e) {
         showToast('导出失败', 'error');
@@ -201,13 +300,52 @@ async function fetchEmailDetail(accountId, messageId) {
 
 // ============ 渲染函数 ============
 
+function renderGroupList() {
+    const list = document.getElementById('groupList');
+
+    list.innerHTML = groups.map(group => {
+        const isActive = group.id === currentGroupId;
+        const count = group.accounts.length;
+        const isDefault = group.id === 'default';
+
+        return `
+            <div class="group-item ${isActive ? 'active' : ''}" data-id="${group.id}" onclick="selectGroup('${group.id}')">
+                <span class="group-name">${isDefault ? '📁' : '📂'} ${escapeHtml(group.name)}</span>
+                <span class="group-count">${count}</span>
+                ${!isDefault ? `<button class="group-delete" onclick="event.stopPropagation(); deleteGroup('${group.id}')" title="删除分组">×</button>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+function selectGroup(groupId) {
+    currentGroupId = groupId;
+    selectedAccountIds.clear();
+    selectedAccountId = null;
+
+    const group = getCurrentGroup();
+    document.getElementById('currentGroupName').textContent = group ? group.name : '';
+
+    renderGroupList();
+    renderAccountList();
+    showEmptyEmailView();
+}
+
+function updateGroupSelects() {
+    const options = groups.map(g => `<option value="${g.id}">${escapeHtml(g.name)}</option>`).join('');
+
+    document.getElementById('importGroupSelect').innerHTML = options;
+    document.getElementById('moveGroupSelect').innerHTML = options;
+}
+
 function renderAccountList() {
+    const accounts = getCurrentAccounts();
     const list = document.getElementById('accountList');
-    const count = document.getElementById('accountCount');
-    count.textContent = `共 ${accounts.length} 个账号`;
+    const countEl = document.getElementById('accountCount');
+    countEl.textContent = `${accounts.length} 个账号`;
 
     if (accounts.length === 0) {
-        list.innerHTML = '<div class="empty-state">暂无账号，请点击右上角导入</div>';
+        list.innerHTML = '<div class="empty-state">此分组暂无账号</div>';
         return;
     }
 
@@ -231,7 +369,6 @@ function renderAccountList() {
                     <div class="account-email">${escapeHtml(acc.email)}</div>
                     <span class="account-status ${statusClass}">${statusText}</span>
                 </div>
-                <button class="account-delete" onclick="event.stopPropagation(); deleteAccount('${acc.id}')" title="删除">🗑</button>
             </div>
         `;
     }).join('');
@@ -252,6 +389,7 @@ function renderAccountList() {
 
 function selectAccount(id) {
     selectedAccountId = id;
+    const accounts = getCurrentAccounts();
     const account = accounts.find(a => a.id === id);
 
     // 更新UI选中状态
@@ -262,7 +400,7 @@ function selectAccount(id) {
     // 显示邮件操作按钮
     document.getElementById('btnRefreshEmails').style.display = '';
     document.getElementById('btnLatestEmail').style.display = '';
-    document.getElementById('emailListTitle').textContent = `邮件列表 - ${account ? account.email : ''}`;
+    document.getElementById('emailListTitle').textContent = `邮件 - ${account ? account.email : ''}`;
 
     // 显示邮件列表视图
     showEmailListView();
@@ -275,7 +413,7 @@ function showEmptyEmailView() {
     document.getElementById('emailListTitle').textContent = '邮件列表';
     document.getElementById('btnRefreshEmails').style.display = 'none';
     document.getElementById('btnLatestEmail').style.display = 'none';
-    document.getElementById('emailList').innerHTML = '<div class="empty-state">请在左侧选择账号查看邮件</div>';
+    document.getElementById('emailList').innerHTML = '<div class="empty-state">请在中间列表选择账号查看邮件</div>';
     showEmailListView();
 }
 
@@ -333,7 +471,6 @@ function renderEmailDetail(msg) {
     const ccAddrs = (msg.cc || msg.ccRecipients || []).map(r => r.emailAddress?.address || '').join(', ');
     const date = msg.receivedDateTime ? new Date(msg.receivedDateTime).toLocaleString('zh-CN') : '';
 
-    // 优先用HTML body，没有则用text body
     let bodyHtml = '';
     if (msg.body?.content) {
         if (msg.body.contentType === 'html') {
@@ -362,22 +499,16 @@ function renderEmailDetail(msg) {
 // ============ 事件绑定 ============
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 初始加载账号列表
-    fetchAccounts();
+    // 初始加载
+    fetchGroups();
 
     // 导入按钮
     document.getElementById('btnImport').addEventListener('click', () => {
-        document.getElementById('importModal').classList.add('show');
         document.getElementById('importText').value = '';
         document.getElementById('importFile').value = '';
-    });
-
-    // 关闭导入弹窗
-    document.getElementById('btnCloseImport').addEventListener('click', () => {
-        document.getElementById('importModal').classList.remove('show');
-    });
-    document.getElementById('btnCancelImport').addEventListener('click', () => {
-        document.getElementById('importModal').classList.remove('show');
+        // 设置当前分组为默认选中
+        document.getElementById('importGroupSelect').value = currentGroupId;
+        openModal('importModal');
     });
 
     // 文件上传
@@ -395,16 +526,34 @@ document.addEventListener('DOMContentLoaded', () => {
     // 确认导入
     document.getElementById('btnConfirmImport').addEventListener('click', () => {
         const text = document.getElementById('importText').value.trim();
+        const groupId = document.getElementById('importGroupSelect').value;
         if (!text) {
             showToast('请输入或上传账号数据', 'error');
             return;
         }
-        importAccounts(text);
-        document.getElementById('importModal').classList.remove('show');
+        importAccounts(text, groupId);
+        closeModal('importModal');
+    });
+
+    // 新建分组
+    document.getElementById('btnNewGroup').addEventListener('click', () => {
+        document.getElementById('newGroupName').value = '';
+        openModal('newGroupModal');
+    });
+
+    document.getElementById('btnConfirmNewGroup').addEventListener('click', () => {
+        const name = document.getElementById('newGroupName').value.trim();
+        if (!name) {
+            showToast('请输入分组名称', 'error');
+            return;
+        }
+        createGroup(name);
+        closeModal('newGroupModal');
     });
 
     // 全选
     document.getElementById('btnSelectAll').addEventListener('click', () => {
+        const accounts = getCurrentAccounts();
         if (selectedAccountIds.size === accounts.length) {
             selectedAccountIds.clear();
         } else {
@@ -413,19 +562,31 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAccountList();
     });
 
+    // 移动分组
+    document.getElementById('btnMoveGroup').addEventListener('click', () => {
+        const ids = Array.from(selectedAccountIds);
+        if (ids.length === 0) {
+            showToast('请先勾选要移动的账号', 'error');
+            return;
+        }
+        document.getElementById('moveCount').textContent = ids.length;
+        document.getElementById('moveGroupSelect').value = currentGroupId;
+        openModal('moveModal');
+    });
+
+    document.getElementById('btnConfirmMove').addEventListener('click', () => {
+        const targetGroupId = document.getElementById('moveGroupSelect').value;
+        moveAccounts(targetGroupId);
+    });
+
     // 删除勾选
     document.getElementById('btnDeleteSelected').addEventListener('click', batchDeleteAccounts);
 
     // 导出账密
-    document.getElementById('btnExport').addEventListener('click', exportAccounts);
+    document.getElementById('btnExport').addEventListener('click', () => exportAccounts('export'));
 
-    // 关闭导出弹窗
-    document.getElementById('btnCloseExport').addEventListener('click', () => {
-        document.getElementById('exportModal').classList.remove('show');
-    });
-    document.getElementById('btnCloseExport2').addEventListener('click', () => {
-        document.getElementById('exportModal').classList.remove('show');
-    });
+    // 原数据
+    document.getElementById('btnRawData').addEventListener('click', () => exportAccounts('raw'));
 
     // 复制导出内容
     document.getElementById('btnCopyExport').addEventListener('click', () => {
@@ -433,7 +594,6 @@ document.addEventListener('DOMContentLoaded', () => {
         navigator.clipboard.writeText(text).then(() => {
             showToast('已复制到剪贴板', 'success');
         }).catch(() => {
-            // fallback
             const ta = document.getElementById('exportText');
             ta.select();
             document.execCommand('copy');
