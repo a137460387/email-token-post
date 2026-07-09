@@ -311,6 +311,39 @@ async function fetchEmails(accountId, email) {
     }
 }
 
+async function searchEmails(accountId, keyword) {
+    cancelPendingRequests();
+    currentAbortController = new AbortController();
+
+    const emailList = document.getElementById('emailList');
+    emailList.innerHTML = '<div class="loading">正在搜索</div>';
+
+    try {
+        const resp = await fetch(`/api/emails/${accountId}/search?q=${encodeURIComponent(keyword)}`, {
+            signal: currentAbortController.signal
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        if (selectedAccountId !== accountId) return;
+
+        if (data.success) {
+            currentEmails = data.messages;
+            renderEmailList(currentEmails, data.email);
+            if (data.messages.length === 0) {
+                emailList.innerHTML = `<div class="empty-state">未找到包含"${escapeHtml(keyword)}"的邮件</div>`;
+            }
+        } else {
+            emailList.innerHTML = `<div class="empty-state">搜索失败：${escapeHtml(data.error)}</div>`;
+            showToast(data.error, 'error');
+        }
+    } catch (e) {
+        if (e.name === 'AbortError') return;
+        emailList.innerHTML = '<div class="empty-state">网络错误</div>';
+        showToast('搜索失败', 'error');
+    }
+}
+
 async function fetchLatestEmail(accountId) {
     cancelPendingRequests();
     currentAbortController = new AbortController();
@@ -470,9 +503,12 @@ function selectAccount(id) {
         item.classList.toggle('active', item.dataset.id === id);
     });
 
-    // 显示邮件操作按钮
+    // 显示邮件操作按钮和搜索框
     document.getElementById('btnRefreshEmails').style.display = '';
     document.getElementById('btnLatestEmail').style.display = '';
+    document.getElementById('emailSearchInput').style.display = '';
+    document.getElementById('btnSearchEmail').style.display = '';
+    document.getElementById('emailSearchInput').value = '';
     document.getElementById('emailListTitle').textContent = `邮件 - ${account ? account.email : ''}`;
 
     // 显示邮件列表视图
@@ -486,6 +522,8 @@ function showEmptyEmailView() {
     document.getElementById('emailListTitle').textContent = '邮件列表';
     document.getElementById('btnRefreshEmails').style.display = 'none';
     document.getElementById('btnLatestEmail').style.display = 'none';
+    document.getElementById('emailSearchInput').style.display = 'none';
+    document.getElementById('btnSearchEmail').style.display = 'none';
     document.getElementById('emailList').innerHTML = '<div class="empty-state">选择账号查看邮件</div>';
     showEmailListView();
 }
@@ -725,6 +763,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // 最新邮件
     document.getElementById('btnLatestEmail').addEventListener('click', () => {
         if (selectedAccountId) fetchLatestEmail(selectedAccountId);
+    });
+
+    // 搜索邮件
+    document.getElementById('btnSearchEmail').addEventListener('click', () => {
+        const keyword = document.getElementById('emailSearchInput').value.trim();
+        if (keyword && selectedAccountId) {
+            searchEmails(selectedAccountId, keyword);
+        }
+    });
+
+    // 搜索框回车
+    document.getElementById('emailSearchInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const keyword = e.target.value.trim();
+            if (keyword && selectedAccountId) {
+                searchEmails(selectedAccountId, keyword);
+            }
+        }
+    });
+
+    // 搜索框清空时恢复列表
+    document.getElementById('emailSearchInput').addEventListener('input', (e) => {
+        if (e.target.value === '' && selectedAccountId) {
+            const accounts = getCurrentAccounts();
+            const account = accounts.find(a => a.id === selectedAccountId);
+            fetchEmails(selectedAccountId, account ? account.email : '');
+        }
     });
 
     // 返回列表

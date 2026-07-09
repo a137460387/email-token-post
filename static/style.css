@@ -376,6 +376,27 @@ body {
     display: flex;
     gap: 4px;
     flex-wrap: wrap;
+    align-items: center;
+}
+
+.search-input {
+    padding: 4px 8px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 12px;
+    width: 150px;
+    transition: border-color 0.15s;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.search-input::placeholder {
+    color: var(--text-tertiary);
 }
 
 /* ============ 账号列表 ============ */
