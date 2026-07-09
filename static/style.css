@@ -442,7 +442,7 @@ body {
     min-width: 0;
 }
 
-.btn-copy {
+.btn-action {
     background: none;
     border: none;
     cursor: pointer;
@@ -454,13 +454,18 @@ body {
     flex-shrink: 0;
 }
 
-.account-item:hover .btn-copy {
+.account-item:hover .btn-action {
     opacity: 0.6;
 }
 
-.btn-copy:hover {
+.btn-action:hover {
     opacity: 1;
     background: var(--bg-hover);
+}
+
+.btn-action-danger:hover {
+    opacity: 1;
+    background: var(--danger-bg);
 }
 
 .account-status {

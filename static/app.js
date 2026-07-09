@@ -437,7 +437,8 @@ function renderAccountList() {
                 <div class="account-info" onclick="selectAccount('${acc.id}')">
                     <div class="account-email-row">
                         <span class="account-email">${escapeHtml(acc.email)}</span>
-                        <button class="btn-copy" onclick="event.stopPropagation(); copyAccount('${acc.id}')" title="复制账号">📋</button>
+                        <button class="btn-action" onclick="event.stopPropagation(); copyAccount('${acc.id}')" title="复制账号">📋</button>
+                        <button class="btn-action btn-action-danger" onclick="event.stopPropagation(); deleteAccount('${acc.id}')" title="删除账号">🗑</button>
                     </div>
                     <span class="account-status ${statusClass}">${statusText}</span>
                 </div>
