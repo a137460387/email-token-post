@@ -313,6 +313,8 @@ async function fetchEmails(accountId, email) {
                 isRead: msg.isRead || readSet.has(msg.id)
             }));
             renderEmailList(currentEmails, data.email);
+            // 刷新账号列表状态（token验证结果可能已更新）
+            fetchGroups();
         } else {
             emailList.innerHTML = `<div class="empty-state">加载失败：${escapeHtml(data.error)}</div>`;
             showToast(data.error, 'error');
@@ -346,6 +348,8 @@ async function fetchLatestEmail(accountId) {
             } else {
                 emailList.innerHTML = '<div class="empty-state">没有邮件</div>';
             }
+            // 刷新账号列表状态（token验证结果可能已更新）
+            fetchGroups();
         } else {
             emailList.innerHTML = `<div class="empty-state">获取失败：${escapeHtml(data.error)}</div>`;
             showToast(data.error, 'error');
