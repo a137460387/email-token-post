@@ -247,6 +247,18 @@ async function exportAccounts(type) {
     const endpoint = type === 'raw' ? '/api/accounts/raw' : '/api/accounts/export';
     const title = type === 'raw' ? '原数据' : '导出账密';
 
+    // 未选中账号时提示用户
+    if (ids.length === 0) {
+        const allAccounts = getCurrentAccounts();
+        if (allAccounts.length === 0) {
+            showToast('当前分组没有账号', 'error');
+            return;
+        }
+        if (!confirm(`未选中账号，确定导出全部 ${allAccounts.length} 个账号？`)) {
+            return;
+        }
+    }
+
     try {
         const data = await apiRequest(endpoint, {
             method: 'POST',
