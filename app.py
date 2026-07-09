@@ -152,6 +152,28 @@ def fetch_email_detail(access_token, message_id):
         return {'success': False, 'error': str(e)}
 
 
+def mark_email_as_read(access_token, message_id):
+    """标记邮件为已读"""
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+    safe_message_id = quote(message_id, safe='')
+    try:
+        resp = requests.patch(
+            f'{GRAPH_API_BASE}/me/messages/{safe_message_id}',
+            headers=headers,
+            json={'isRead': True},
+            timeout=30
+        )
+        if resp.status_code == 200:
+            return {'success': True}
+        else:
+            return {'success': False, 'error': resp.text}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
 def is_token_valid(account):
     """检查token是否有效（未过期）"""
     expires_at = account.get('token_expires_at', 0)
@@ -457,6 +479,26 @@ def get_email_detail(account_id, message_id):
         return jsonify({'success': True, 'message': result['message']})
     else:
         return jsonify({'success': False, 'error': result.get('error', '获取失败')})
+
+
+@app.route('/api/emails/<account_id>/<message_id>/read', methods=['POST'])
+def mark_as_read(account_id, message_id):
+    """标记邮件为已读"""
+    data = load_data()
+    account, group = find_account(data, account_id)
+
+    if not account:
+        return jsonify({'success': False, 'error': '账号不存在'}), 404
+
+    access_token = account.get('access_token', '')
+    if not access_token:
+        return jsonify({'success': False, 'error': '请先刷新邮件列表'})
+
+    result = mark_email_as_read(access_token, message_id)
+    if result.get('success'):
+        return jsonify({'success': True})
+    else:
+        return jsonify({'success': False, 'error': result.get('error', '标记失败')})
 
 
 @app.route('/api/emails/<account_id>/latest', methods=['GET'])

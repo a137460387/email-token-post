@@ -516,6 +516,29 @@ function openEmail(messageId) {
     if (!selectedAccountId) return;
     showEmailDetailView();
     fetchEmailDetail(selectedAccountId, messageId);
+
+    // 标记邮件为已读
+    markEmailAsRead(selectedAccountId, messageId);
+}
+
+async function markEmailAsRead(accountId, messageId) {
+    try {
+        await fetch(`/api/emails/${accountId}/${messageId}/read`, { method: 'POST' });
+
+        // 更新本地邮件列表中的isRead状态
+        const emailItem = currentEmails.find(m => m.id === messageId);
+        if (emailItem) {
+            emailItem.isRead = true;
+        }
+
+        // 更新UI：移除未读样式
+        const emailEl = document.querySelector(`.email-item[data-id="${messageId}"]`);
+        if (emailEl) {
+            emailEl.classList.remove('unread');
+        }
+    } catch (e) {
+        // 静默失败，不影响用户体验
+    }
 }
 
 function showEmailDetail(msg) {
