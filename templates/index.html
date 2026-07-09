@@ -3,159 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>令牌取件系统 - 微软令牌网页取件</title>
+    <title>令牌取件系统</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📧</text></svg>">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="app-container">
-        <!-- 顶部标题栏 -->
+        <!-- 顶部导航 -->
         <header class="header">
             <div class="header-left">
-                <h1>📧 令牌取件系统</h1>
-                <span class="subtitle">微软令牌网页取件</span>
+                <h1>📧 <span>令牌取件</span>系统</h1>
+                <span class="subtitle">Microsoft Token Fetcher</span>
             </div>
             <div class="header-right">
-                <button class="btn btn-primary" id="btnImport">📥 导入令牌账号</button>
+                <button class="btn btn-primary" id="btnImport">
+                    <span>+</span> 导入令牌
+                </button>
             </div>
         </header>
 
-        <!-- 主内容区：三栏布局 -->
+        <!-- 主内容区 -->
         <div class="main-content">
             <!-- 左侧：分组管理 -->
-            <div class="sidebar" id="sidebar">
+            <aside class="sidebar" id="sidebar">
                 <div class="sidebar-header">
-                    <h2>令牌库分组管理</h2>
+                    <h2>分组管理</h2>
                 </div>
-                <div class="group-list" id="groupList">
-                    <!-- 分组列表动态生成 -->
-                </div>
+                <div class="group-list" id="groupList"></div>
                 <div class="sidebar-footer">
-                    <button class="btn btn-sm btn-block" id="btnNewGroup">+ 新建分组</button>
+                    <button class="btn btn-ghost btn-sm" id="btnNewGroup" style="width:100%">
+                        + 新建分组
+                    </button>
                 </div>
-            </div>
+            </aside>
 
             <!-- 中间：账号列表 -->
-            <div class="panel account-panel">
+            <section class="panel account-panel">
                 <div class="panel-header">
                     <div class="panel-title">
                         <h2 id="currentGroupName">默认分组</h2>
-                        <span class="account-count" id="accountCount">0 个账号</span>
+                        <span class="account-count" id="accountCount">0</span>
                     </div>
                     <div class="toolbar">
-                        <button class="btn btn-sm" id="btnSelectAll">全选</button>
-                        <button class="btn btn-sm" id="btnMoveGroup">📦 移动分组</button>
-                        <button class="btn btn-sm btn-danger" id="btnDeleteSelected">🗑 删除勾选</button>
-                        <button class="btn btn-sm" id="btnExport">📤 导出账密</button>
-                        <button class="btn btn-sm" id="btnRawData">📋 原数据</button>
+                        <button class="btn btn-ghost btn-sm" id="btnSelectAll">全选</button>
+                        <button class="btn btn-ghost btn-sm" id="btnMoveGroup">移动</button>
+                        <button class="btn btn-danger btn-sm" id="btnDeleteSelected">删除</button>
+                        <button class="btn btn-ghost btn-sm" id="btnExport">导出</button>
+                        <button class="btn btn-ghost btn-sm" id="btnRawData">原数据</button>
                     </div>
                 </div>
                 <div class="account-list" id="accountList">
-                    <div class="empty-state">暂无账号，请导入</div>
+                    <div class="empty-state">暂无账号</div>
                 </div>
-            </div>
+            </section>
 
             <!-- 右侧：邮件区域 -->
-            <div class="panel email-panel">
-                <div class="email-view" id="emailView">
-                    <!-- 邮件列表视图 -->
-                    <div class="email-list-view" id="emailListView">
-                        <div class="panel-header">
-                            <h2 id="emailListTitle">邮件列表</h2>
-                            <div class="toolbar">
-                                <button class="btn btn-sm btn-primary" id="btnRefreshEmails" style="display:none">🔄 刷新</button>
-                                <button class="btn btn-sm" id="btnLatestEmail" style="display:none">📬 最新邮件</button>
-                            </div>
-                        </div>
-                        <div class="email-list" id="emailList">
-                            <div class="empty-state">请在中间列表选择账号查看邮件</div>
+            <section class="panel email-panel">
+                <!-- 邮件列表 -->
+                <div class="email-list-view" id="emailListView">
+                    <div class="panel-header">
+                        <h2 id="emailListTitle">邮件列表</h2>
+                        <div class="toolbar">
+                            <button class="btn btn-ghost btn-sm" id="btnRefreshEmails" style="display:none">刷新</button>
+                            <button class="btn btn-ghost btn-sm" id="btnLatestEmail" style="display:none">最新</button>
                         </div>
                     </div>
-
-                    <!-- 邮件详情视图 -->
-                    <div class="email-detail-view" id="emailDetailView" style="display:none">
-                        <div class="panel-header">
-                            <button class="btn btn-sm" id="btnBackToList">← 返回列表</button>
-                            <h2 id="emailDetailTitle">邮件详情</h2>
-                        </div>
-                        <div class="email-detail" id="emailDetail">
-                        </div>
+                    <div class="email-list" id="emailList">
+                        <div class="empty-state">选择账号查看邮件</div>
                     </div>
                 </div>
-            </div>
+
+                <!-- 邮件详情 -->
+                <div class="email-detail-view" id="emailDetailView" style="display:none">
+                    <div class="panel-header">
+                        <button class="btn btn-ghost btn-sm" id="btnBackToList">← 返回</button>
+                        <h2 id="emailDetailTitle">邮件详情</h2>
+                    </div>
+                    <div class="email-detail" id="emailDetail"></div>
+                </div>
+            </section>
         </div>
     </div>
 
-    <!-- 导入弹窗 -->
+    <!-- 弹窗：导入 -->
     <div class="modal-overlay" id="importModal">
         <div class="modal">
             <div class="modal-header">
-                <h3>📥 导入令牌账号</h3>
+                <h3>导入令牌账号</h3>
                 <button class="btn-close" onclick="closeModal('importModal')">×</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label>导入到：</label>
-                    <select id="importGroupSelect" class="form-select">
-                        <!-- 动态生成 -->
-                    </select>
+                    <label>导入到分组</label>
+                    <select id="importGroupSelect" class="form-select"></select>
                 </div>
                 <div class="form-group">
-                    <label>格式：email----password----client_id----refresh_token</label>
-                    <textarea id="importText" rows="8" placeholder="每行一个账号&#10;email----password----client_id----refresh_token"></textarea>
+                    <label>账号数据</label>
+                    <textarea id="importText" rows="8" placeholder="每行一个账号：&#10;email----password----client_id----refresh_token"></textarea>
                 </div>
                 <div class="form-group">
-                    <label>或上传TXT文件：</label>
+                    <label>或上传文件</label>
                     <input type="file" id="importFile" accept=".txt">
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-primary" id="btnConfirmImport">确认导入</button>
                 <button class="btn" onclick="closeModal('importModal')">取消</button>
+                <button class="btn btn-primary" id="btnConfirmImport">确认导入</button>
             </div>
         </div>
     </div>
 
-    <!-- 移动分组弹窗 -->
+    <!-- 弹窗：移动分组 -->
     <div class="modal-overlay" id="moveModal">
-        <div class="modal">
+        <div class="modal modal-sm">
             <div class="modal-header">
-                <h3>📦 移动分组</h3>
+                <h3>移动到分组</h3>
                 <button class="btn-close" onclick="closeModal('moveModal')">×</button>
             </div>
             <div class="modal-body">
-                <p class="move-count">已选择 <strong id="moveCount">0</strong> 个账号</p>
+                <p class="move-count">已选中 <strong id="moveCount">0</strong> 个账号</p>
                 <div class="form-group">
-                    <label>目标分组：</label>
-                    <select id="moveGroupSelect" class="form-select">
-                        <!-- 动态生成 -->
-                    </select>
+                    <label>目标分组</label>
+                    <select id="moveGroupSelect" class="form-select"></select>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-primary" id="btnConfirmMove">确认移动</button>
                 <button class="btn" onclick="closeModal('moveModal')">取消</button>
+                <button class="btn btn-primary" id="btnConfirmMove">确认移动</button>
             </div>
         </div>
     </div>
 
-    <!-- 导出弹窗 -->
+    <!-- 弹窗：导出 -->
     <div class="modal-overlay" id="exportModal">
         <div class="modal">
             <div class="modal-header">
-                <h3 id="exportModalTitle">📤 导出数据</h3>
+                <h3 id="exportModalTitle">导出数据</h3>
                 <button class="btn-close" onclick="closeModal('exportModal')">×</button>
             </div>
             <div class="modal-body">
-                <textarea id="exportText" rows="10" readonly></textarea>
+                <textarea id="exportText" rows="10" readonly style="font-family:var(--font-mono);font-size:11px;"></textarea>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-primary" id="btnCopyExport">📋 复制</button>
                 <button class="btn" onclick="closeModal('exportModal')">关闭</button>
+                <button class="btn btn-primary" id="btnCopyExport">复制</button>
             </div>
         </div>
     </div>
 
-    <!-- 新建分组弹窗 -->
+    <!-- 弹窗：新建分组 -->
     <div class="modal-overlay" id="newGroupModal">
         <div class="modal modal-sm">
             <div class="modal-header">
@@ -164,18 +160,18 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label>分组名称：</label>
+                    <label>分组名称</label>
                     <input type="text" id="newGroupName" class="form-input" placeholder="输入分组名称">
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-primary" id="btnConfirmNewGroup">创建</button>
                 <button class="btn" onclick="closeModal('newGroupModal')">取消</button>
+                <button class="btn btn-primary" id="btnConfirmNewGroup">创建</button>
             </div>
         </div>
     </div>
 
-    <!-- 提示框 -->
+    <!-- Toast -->
     <div class="toast" id="toast"></div>
 
     <script src="{{ url_for('static', filename='app.js') }}"></script>
