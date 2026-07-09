@@ -443,16 +443,17 @@ body {
 }
 
 .btn-action {
-    background: transparent;
-    border: none;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-default);
     cursor: pointer;
-    font-size: 13px;
-    padding: 2px 5px;
+    font-size: 12px;
+    padding: 3px 8px;
     border-radius: var(--radius-sm);
     opacity: 0;
-    transition: opacity 0.15s;
+    transition: all 0.15s;
     flex-shrink: 0;
     line-height: 1;
+    color: var(--text-secondary);
 }
 
 .account-item:hover .btn-action {
@@ -460,11 +461,15 @@ body {
 }
 
 .btn-action:hover {
-    background: var(--bg-hover);
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
 }
 
 .btn-action-danger:hover {
-    background: var(--danger-bg);
+    background: var(--danger);
+    border-color: var(--danger);
+    color: white;
 }
 
 .account-status {
