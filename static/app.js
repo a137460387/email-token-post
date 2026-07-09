@@ -435,7 +435,10 @@ function renderAccountList() {
             <div class="account-item ${isActive ? 'active' : ''}" data-id="${acc.id}">
                 <input type="checkbox" ${isChecked ? 'checked' : ''} data-id="${acc.id}" class="account-checkbox">
                 <div class="account-info" onclick="selectAccount('${acc.id}')">
-                    <div class="account-email">${escapeHtml(acc.email)}</div>
+                    <div class="account-email-row">
+                        <span class="account-email">${escapeHtml(acc.email)}</span>
+                        <button class="btn-copy" onclick="event.stopPropagation(); copyAccount('${acc.id}')" title="复制账号">📋</button>
+                    </div>
                     <span class="account-status ${statusClass}">${statusText}</span>
                 </div>
             </div>
@@ -527,6 +530,23 @@ function openEmail(messageId) {
 
     // 标记邮件为已读
     markEmailAsRead(selectedAccountId, messageId);
+}
+
+async function copyAccount(accountId) {
+    try {
+        const resp = await fetch('/api/accounts/raw', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: [accountId] })
+        });
+        const data = await resp.json();
+        if (data.success && data.text) {
+            await navigator.clipboard.writeText(data.text);
+            showToast('已复制到剪贴板', 'success');
+        }
+    } catch (e) {
+        showToast('复制失败', 'error');
+    }
 }
 
 async function markEmailAsRead(accountId, messageId) {

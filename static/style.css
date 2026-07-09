@@ -424,6 +424,12 @@ body {
     min-width: 0;
 }
 
+.account-email-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 .account-email {
     font-size: 12px;
     font-weight: 500;
@@ -432,6 +438,29 @@ body {
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-mono);
+    flex: 1;
+    min-width: 0;
+}
+
+.btn-copy {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+
+.account-item:hover .btn-copy {
+    opacity: 0.6;
+}
+
+.btn-copy:hover {
+    opacity: 1;
+    background: var(--bg-hover);
 }
 
 .account-status {
