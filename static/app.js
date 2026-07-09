@@ -582,6 +582,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // 删除勾选
     document.getElementById('btnDeleteSelected').addEventListener('click', batchDeleteAccounts);
 
+    // 刷新Token
+    document.getElementById('btnRefreshToken').addEventListener('click', async () => {
+        const ids = Array.from(selectedAccountIds);
+        if (ids.length === 0) {
+            showToast('请先勾选要刷新的账号', 'error');
+            return;
+        }
+        showToast('正在刷新Token...', 'info');
+        try {
+            const resp = await fetch('/api/accounts/refresh-all', { method: 'POST' });
+            const data = await resp.json();
+            if (data.success) {
+                const summary = data.results.map(r => `${r.email}: ${r.status}`).join('\n');
+                showToast(`刷新完成`, 'success');
+                fetchGroups();
+            }
+        } catch (e) {
+            showToast('刷新失败', 'error');
+        }
+    });
+
     // 导出账密
     document.getElementById('btnExport').addEventListener('click', () => exportAccounts('export'));
 
