@@ -436,10 +436,17 @@ function renderAccountList() {
     const allAccounts = getCurrentAccounts();
     const searchKeyword = document.getElementById('accountSearchInput').value.trim().toLowerCase();
 
+    // 按添加时间倒序排列（最新导入的账号显示在最上方）
+    const sortedAccounts = [...allAccounts].sort((a, b) => {
+        const ta = a.created_at || '';
+        const tb = b.created_at || '';
+        return tb.localeCompare(ta);
+    });
+
     // 根据搜索关键词过滤账号
     const accounts = searchKeyword
-        ? allAccounts.filter(acc => acc.email.toLowerCase().includes(searchKeyword))
-        : allAccounts;
+        ? sortedAccounts.filter(acc => acc.email.toLowerCase().includes(searchKeyword))
+        : sortedAccounts;
 
     const list = document.getElementById('accountList');
     const countEl = document.getElementById('accountCount');
