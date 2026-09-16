@@ -7,3 +7,4 @@ venv/
 accounts.json
 data.json
 *.log
+/nul
