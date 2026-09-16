@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 import os
 import time
@@ -7,6 +8,8 @@ import requests
 from datetime import datetime
 from urllib.parse import quote
 from flask import Flask, render_template, request, jsonify
+
+from auto_import import extract_token, fetch_card_lines
 
 app = Flask(__name__)
 
@@ -41,6 +44,16 @@ def save_data(data):
     except Exception:
         os.unlink(tmp_path)
         raise
+
+
+def is_tiqu_token_text(text):
+    """判断导入文本是否为阿奇索提货链接或裸token（单行、不含账号分隔符）"""
+    s = text.strip()
+    if not s or '----' in s or '\n' in s:
+        return False
+    if re.fullmatch(r'[0-9a-zA-Z]{32,}', s):
+        return True
+    return 'alds.agiso.com/' in s
 
 
 def parse_import_text(text):
@@ -324,13 +337,27 @@ def move_accounts():
 
 @app.route('/api/accounts/import', methods=['POST'])
 def import_accounts():
-    """导入账号"""
+    """导入账号（支持直接粘贴阿奇索提货链接，自动提取卡密）"""
     req = get_request_json()
     text = req.get('text', '')
     group_id = req.get('group_id', 'default')
 
-    if not text:
+    if not text.strip():
         return jsonify({'success': False, 'error': '没有输入内容'}), 400
+
+    source_note = ''
+    if is_tiqu_token_text(text):
+        try:
+            token = extract_token(text)
+            lines, title = fetch_card_lines(token)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': f'提货链接提取失败: {e}'}), 400
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'提货链接提取失败: {e}'}), 400
+        if not lines:
+            return jsonify({'success': False, 'error': '提货链接中没有可导入的卡密'}), 400
+        source_note = f'已识别提货链接{f"（{title}）" if title else ""}，提取到 {len(lines)} 条卡密；'
+        text = '\n'.join(lines)
 
     new_accounts = parse_import_text(text)
     if not new_accounts:
@@ -355,7 +382,7 @@ def import_accounts():
     save_data(data)
     return jsonify({
         'success': True,
-        'message': f'导入完成：新增 {added} 个，跳过 {skipped} 个重复账号',
+        'message': f'{source_note}导入完成：新增 {added} 个，跳过 {skipped} 个重复账号',
         'added': added,
         'skipped': skipped
     })

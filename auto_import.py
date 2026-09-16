@@ -20,18 +20,18 @@ LOCAL_IMPORT_API = "http://127.0.0.1:17361/api/accounts/import"
 
 
 def extract_token(url_or_token):
-    """从完整链接（xxx/yyy.aspx）或裸 token 字符串中提取 token"""
+    """从完整链接（xxx/yyy.aspx）或裸 token 字符串中提取 token，失败抛 ValueError"""
     s = url_or_token.strip()
     if s.lower().endswith('.aspx'):
         s = s[:-5]
     s = s.rstrip('/').split('/')[-1].split('?')[0]
     if not re.fullmatch(r'[0-9a-zA-Z]{32,}', s):
-        raise SystemExit(f'无法从输入中解析 token: {url_or_token}')
+        raise ValueError(f'无法从输入中解析 token: {url_or_token}')
     return s
 
 
 def fetch_card_lines(token):
-    """调用提货接口，返回所有卡密行（email----password----client_id----refresh_token）"""
+    """调用提货接口，返回 (卡密行列表, 标题)；失败抛 ValueError"""
     payload = json.dumps({'token': token}).encode('utf-8')
     req = urllib.request.Request(
         TIQU_API,
@@ -48,16 +48,17 @@ def fetch_card_lines(token):
         result = json.loads(resp.read().decode('utf-8'))
 
     if not result.get('IsSuccess'):
-        raise SystemExit(f"提货接口返回失败: {result.get('Error_Msg') or result}")
+        raise ValueError(f"提货接口返回失败: {result.get('Error_Msg') or result}")
 
     groups = json.loads(result['Data'])
     lines = []
+    title = groups[0].get('Title', '') if groups else ''
     for group in groups:
         for item in group.get('CardPwdArr') or []:
             c = (item.get('c') or '').strip()
             if c:
                 lines.append(c)
-    return lines, groups[0].get('Title', '') if groups else ''
+    return lines, title
 
 
 def import_lines(lines, group_id='default'):
@@ -78,13 +79,18 @@ def main():
         print(__doc__)
         sys.exit(1)
 
-    token = extract_token(sys.argv[1])
+    try:
+        token = extract_token(sys.argv[1])
+        print(f'token: {token}')
+        lines, title = fetch_card_lines(token)
+    except ValueError as e:
+        print(f'错误: {e}')
+        sys.exit(1)
+
     group_id = 'default'
     if '--group' in sys.argv:
         group_id = sys.argv[sys.argv.index('--group') + 1]
 
-    print(f'token: {token}')
-    lines, title = fetch_card_lines(token)
     print(f'提取到 {len(lines)} 条卡密' + (f'（{title}）' if title else ''))
 
     result = import_lines(lines, group_id)

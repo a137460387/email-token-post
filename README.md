@@ -66,7 +66,9 @@ user@outlook.com----password----9e5f94bc-e8a4-4e73-b8be-63364c29d753----M.C555_B
 
 ## 🔗 提货链接自动导入
 
-`auto_import.py` 支持从阿奇索（alds.agiso.com）提货链接一键提取全部卡密并导入本地服务，无需打开网页手动复制：
+网页“导入令牌账号”弹窗的“账号数据”输入框会自动识别阿奇索（alds.agiso.com）提货链接：直接粘贴链接点“确认导入”即可，后端自动提取全部卡密并入库，无需手动复制。
+
+命令行同样支持（`auto_import.py`）：
 
 ```bash
 python auto_import.py "https://alds.agiso.com/xxxxxxxx.aspx"
@@ -124,6 +126,7 @@ curl -X POST "http://localhost:17361/api/accounts/import" \
 
 - `group_id` 可选，指定导入到哪个分组，默认 `default`
 - 按邮箱地址去重，已存在的账号自动跳过
+- `text` 也支持直接传阿奇索提货链接或裸 token，后端会自动识别并提取全部卡密
 
 响应：
 
