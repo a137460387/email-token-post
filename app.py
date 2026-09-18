@@ -9,7 +9,7 @@ from datetime import datetime
 from urllib.parse import quote
 from flask import Flask, render_template, request, jsonify
 
-from auto_import import extract_token, fetch_card_lines
+from auto_import import fetch_card_lines
 
 app = Flask(__name__)
 
@@ -46,14 +46,19 @@ def save_data(data):
         raise
 
 
-def is_tiqu_token_text(text):
-    """判断导入文本是否为阿奇索提货链接或裸token（单行、不含账号分隔符）"""
+def find_tiqu_token(text):
+    """从导入文本中识别阿奇索提货链接或裸token，返回token，识别不到返回None
+
+    支持整段订单/发货通知（含中文说明文字），自动提取其中链接的token；
+    也支持单独粘贴链接或裸token。
+    """
+    m = re.search(r'alds\.agiso\.com/([0-9a-zA-Z]{32,})', text)
+    if m:
+        return m.group(1)
     s = text.strip()
-    if not s or '----' in s or '\n' in s:
-        return False
-    if re.fullmatch(r'[0-9a-zA-Z]{32,}', s):
-        return True
-    return 'alds.agiso.com/' in s
+    if '\n' not in s and '----' not in s and re.fullmatch(r'[0-9a-zA-Z]{32,}', s):
+        return s
+    return None
 
 
 def parse_import_text(text):
@@ -346,9 +351,9 @@ def import_accounts():
         return jsonify({'success': False, 'error': '没有输入内容'}), 400
 
     source_note = ''
-    if is_tiqu_token_text(text):
+    token = find_tiqu_token(text)
+    if token:
         try:
-            token = extract_token(text)
             lines, title = fetch_card_lines(token)
         except ValueError as e:
             return jsonify({'success': False, 'error': f'提货链接提取失败: {e}'}), 400
